@@ -19,7 +19,8 @@
 // - Tolerant: a line in the section that does not parse is KEPT verbatim,
 //   reported, and never dropped. A hex listed twice is merged.
 //
-// Sections (§1.4) live in the frontmatter as a list of {name, folder}.
+// Sections (§1.4) live in the frontmatter as a list of {name, folder} (plus
+// an optional `template`: the vault path of the note new notes start from).
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const LINK = /\[\[([^\][\n]+)\]\]/g;
@@ -191,6 +192,8 @@ export interface Section {
 	name: string;
 	/** Vault folder, relative to the vault root. */
 	folder: string;
+	/** Vault path of the template new notes here start from. */
+	template?: string;
 }
 
 /** The defaults mirror Flutter's categories, so the converter maps them 1:1. */
@@ -217,13 +220,20 @@ export function readSections(frontmatter: Record<string, unknown> | null | undef
 			const o = s as Record<string, unknown>;
 			const name = typeof o.name === 'string' ? o.name.trim() : '';
 			const folder = typeof o.folder === 'string' ? cleanFolder(o.folder) : name;
-			if (name && folder) out.push({ name, folder });
+			const template = typeof o.template === 'string' && o.template.trim() ? o.template.trim() : undefined;
+			if (name && folder) out.push(template ? { name, folder, template } : { name, folder });
 		}
 	}
 	return out;
 }
 
-export const sectionsFrontmatter = (sections: Section[]) => sections.map((s) => ({ name: s.name, folder: s.folder }));
+export const sectionsFrontmatter = (sections: Section[]) =>
+	sections.map((s) => (s.template ? { name: s.name, folder: s.folder, template: s.template } : { name: s.name, folder: s.folder }));
+
+/** The section a vault path belongs to (its folder or below), or null. */
+export function sectionOf(sections: readonly Section[], path: string): Section | null {
+	return sections.find((s) => path.startsWith(`${s.folder}/`)) ?? null;
+}
 
 /** Why [sections] are not valid, or []: a folder inside another section's
  *  folder (nesting is refused, Q11), or a folder used twice. */

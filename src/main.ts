@@ -1,21 +1,30 @@
-import { MarkdownView, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile, type SettingDefinitionItem, type WorkspaceLeaf } from 'obsidian';
+import { HexLoreSettingTab, readSettings, type HexLoreSettings, type SettingsHost } from './settings';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
+import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
 
-export default class HexLorePlugin extends Plugin {
+export default class HexLorePlugin extends Plugin implements SettingsHost {
+	settings!: HexLoreSettings;
+	settingGroups: (() => SettingDefinitionItem[])[] = [];
+
 	/** Index notes the GM chose to read as Markdown this session. */
 	private asMarkdown = new Set<string>();
 
 	private stores!: StoreRegistry;
 
 	async onload() {
+		this.settings = readSettings(await this.loadData());
+		this.addSettingTab(new HexLoreSettingTab(this.app, this));
 		this.stores = new StoreRegistry(this);
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
 				toggle: () => this.togglePanel(),
+				sections: () => this.toggleSections(),
 			}));
-		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf));
+		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings));
+		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
 		// Ctrl-hover on a hex previews its principal note (Page preview).
 		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Hex maps', defaultMod: true });
 
@@ -23,6 +32,21 @@ export default class HexLorePlugin extends Plugin {
 			id: 'show-panel',
 			name: 'Show the side panel',
 			callback: () => void this.showPanel(true),
+		});
+		this.addCommand({
+			id: 'show-sections',
+			name: 'Show the map sections',
+			callback: () => void this.showSections(true),
+		});
+		this.addCommand({
+			id: 'show-note-on-map',
+			name: 'Show this note on the map',
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file || file.extension !== 'md' || isMapIndex(this.app, file)) return false;
+				if (!checking) this.showNoteOnMap(file);
+				return true;
+			},
 		});
 
 		// A `.hexmap.md` index opens as its map (the Excalidraw pattern): when
@@ -62,6 +86,23 @@ export default class HexLorePlugin extends Plugin {
 		void this.stores.flushAll();
 	}
 
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+	}
+
+	/** Centre the first open map that has hexes for [file] on them. */
+	private showNoteOnMap(file: TFile): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(MAP_VIEW)) {
+			if (!(leaf.view instanceof MapView)) continue;
+			const ids = leaf.view.hexesOf(file);
+			if (!ids.size) continue;
+			void this.app.workspace.revealLeaf(leaf);
+			leaf.view.showHexes(ids, file.basename);
+			return;
+		}
+		new Notice(`“${file.basename}” is on no hex of an open map (directly, or through its location).`);
+	}
+
 	private async openMap(file: TFile, leaf: WorkspaceLeaf) {
 		this.asMarkdown.delete(file.path);
 		await leaf.setViewState({ type: MAP_VIEW, active: true, state: { file: file.path } });
@@ -89,6 +130,29 @@ export default class HexLorePlugin extends Plugin {
 			if (!right) return;
 			await right.setViewState({ type: INSPECTOR_VIEW, active: false });
 			leaf = right;
+		}
+		if (reveal) await ws.revealLeaf(leaf);
+	}
+
+	/** The sections live in the left sidebar. */
+	async toggleSections(): Promise<void> {
+		const ws = this.app.workspace;
+		const leaf = ws.getLeavesOfType(SECTIONS_VIEW)[0];
+		if (leaf && !ws.leftSplit.collapsed && leaf.view.containerEl.isShown()) {
+			ws.leftSplit.collapse();
+			return;
+		}
+		await this.showSections(true);
+	}
+
+	async showSections(reveal: boolean): Promise<void> {
+		const ws = this.app.workspace;
+		let leaf = ws.getLeavesOfType(SECTIONS_VIEW)[0];
+		if (!leaf) {
+			const left = ws.getLeftLeaf(false);
+			if (!left) return;
+			await left.setViewState({ type: SECTIONS_VIEW, active: false });
+			leaf = left;
 		}
 		if (reveal) await ws.revealLeaf(leaf);
 	}

@@ -417,3 +417,133 @@
 	opacity: 0.3;
 	cursor: default;
 }
+
+/* --- Item 2.5: notes, people, secondary notes, sections ------------------------- */
+.hexlore-note-row.is-broken > a,
+.hexlore-note-row.is-broken > span {
+	opacity: 0.55;
+	text-decoration: line-through;
+}
+
+.hexlore-note-kind {
+	display: flex;
+	color: var(--text-faint);
+	flex: none;
+	margin-inline-end: var(--size-4-1);
+}
+
+.hexlore-note-kind svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.hexlore-panel-secondary {
+	margin-top: var(--size-4-2);
+}
+
+.hexlore-panel-secondary > summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	margin-bottom: var(--size-4-1);
+}
+
+.hexlore-panel .setting-item.hexlore-panel-highlight {
+	flex-direction: row;
+	align-items: center;
+	padding: var(--size-4-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	background: rgba(232, 184, 74, 0.15); /* the map's note highlight, gold */
+}
+
+/* The sections sidebar. */
+.hexlore-sections {
+	padding: var(--size-4-2) var(--size-4-3);
+}
+
+.hexlore-section {
+	margin-bottom: var(--size-4-2);
+}
+
+.hexlore-section-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	cursor: pointer;
+	padding: 2px 0;
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-section-head::marker,
+.hexlore-section-head::-webkit-details-marker {
+	color: var(--text-faint);
+}
+
+.hexlore-section-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hexlore-section-count {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-weight: normal;
+}
+
+.hexlore-section-head .clickable-icon {
+	padding: 2px;
+	opacity: 0.6;
+}
+
+.hexlore-section-head:hover .clickable-icon {
+	opacity: 1;
+}
+
+.hexlore-section-notes {
+	padding-left: var(--size-4-4);
+	display: flex;
+	flex-direction: column;
+}
+
+.hexlore-section-note {
+	padding: 2px var(--size-4-1);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.hexlore-section-note:hover {
+	background: var(--background-modifier-hover);
+}
+
+.hexlore-section-note-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hexlore-section-sub {
+	color: var(--text-faint);
+}
+
+.hexlore-hex-badge {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: none;
+	padding: 0 var(--size-4-1);
+	border-radius: var(--radius-s);
+	color: #b8862a;
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-hex-badge:hover {
+	background: rgba(232, 184, 74, 0.2);
+}
+
+.hexlore-hex-badge svg {
+	width: 12px;
+	height: 12px;
+}

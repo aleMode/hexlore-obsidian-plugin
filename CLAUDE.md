@@ -111,6 +111,25 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 - Input (as Flutter's canvas): left-drag = the tool (select: rubber band);
   middle-drag / Space+drag / trackpad scroll pan; wheel and pinch zoom;
   right-click = cell menu. Raw pointer events only.
+- Notes (item 2.5): `src/notes/note_meta.ts` (pure) holds the note
+  CONVENTIONS — `type: npc | quest | place` in the frontmatter, Flutter's NPC
+  and quest fields under the same names, `location` = link(s) to PLACE NOTES
+  (never coordinates), templates (`{{title}}`, `{{hex}}`, `{{map}}`,
+  `{{date}}`, `{{time}}`), and which hexes a note stands for (the hexes
+  listing it + those listing its places). `src/view/vault_notes.ts` applies
+  them through Obsidian (resolving links, creating notes, NPCs at a place,
+  outgoing links). In the map panel: the hex's notes (reorder, unlink,
+  RELINK a broken one), "People and quests here", the secondary notes
+  (outgoing links, on request), New note (section, kind, template).
+  `src/view/sections_view.ts` is the left-sidebar Sections list (§1.4):
+  per-campaign `{name, folder, template?}` in the index frontmatter,
+  defaults until changed, nesting refused; hovering a note lights up its
+  hexes, notes drag onto hexes. The map view highlights the hexes of the
+  note being read (gold), and "Show this note on the map" centres on them.
+  A hex holding ONLY notes (no map record) is a hex like any other for
+  cut / copy / paste / delete / move / explode / resize.
+- `src/settings.ts` — vault settings (data.json), declarative
+  `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane
   menu → "Benchmark the renderer"); keep it to compare renderer changes.
 

@@ -51,6 +51,22 @@ export function strokeCells(f: OverlayFrame, cells: Iterable<[number, number]>, 
 	c.stroke();
 }
 
+/** Fill cells with a translucent [color] and outline them: a highlight. */
+export function highlightCells(f: OverlayFrame, cells: Iterable<[number, number]>, color: string, alpha: number, widthPx: number): void {
+	sceneSpace(f);
+	const c = f.c;
+	c.beginPath();
+	for (const [q, r] of cells) hexPath(c, q, r);
+	c.globalAlpha = alpha;
+	c.fillStyle = color;
+	c.fill();
+	c.globalAlpha = 1;
+	c.strokeStyle = color;
+	c.lineWidth = widthPx / f.camera.scale;
+	c.lineJoin = 'round';
+	c.stroke();
+}
+
 /** The in-grid cells a brush of [radius] centred on [cell] covers. */
 export function brushCells(cell: [number, number], radius: number, grid: GridWindow): [number, number][] {
 	return hexesWithin(cell[0], cell[1], Math.max(0, radius)).filter(([q, r]) => cellInGrid(q, r, grid));

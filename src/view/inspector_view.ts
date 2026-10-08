@@ -2,7 +2,7 @@
 // can be done to it; the regions; and Display & overlays (decision 27). It
 // follows whichever map view was last active.
 
-import { FuzzySuggestModal, ItemView, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type Events, type WorkspaceLeaf } from 'obsidian';
+import { FuzzySuggestModal, ItemView, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type DropdownComponent, type Events, type WorkspaceLeaf } from 'obsidian';
 import { displayIdFor } from '../core/hex';
 import { hexIdFor } from '../core/hex_data';
 import { threadColorGroups } from '../core/overlay_filter';
@@ -12,7 +12,10 @@ import type { Cell, LineKind, MapEditor } from '../edit/editor';
 import { ART } from '../render/art';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
 import { sectionsOf, updateRegionLinks } from '../storage/index_file';
-import { MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
+import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
+import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
+import type { HexLoreSettings } from '../settings';
+import { createNote, linkPath, noteKind, outgoingLinks, peopleAt, resolveLink, templateFiles } from './vault_notes';
 import { ROUTE_KINDS } from './toolbar';
 
 export const INSPECTOR_VIEW = 'hexlore-panel';
@@ -20,6 +23,10 @@ export const INSPECTOR_VIEW = 'hexlore-panel';
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const OPEN_KEY = 'hexlore-panel-open';
+const SECONDARY_KEY = 'hexlore-panel-secondary';
+
+/** The icon of each kind of note. */
+export const KIND_ICON: Record<NoteKind, string> = { note: 'file-text', place: 'map-pin', npc: 'user', quest: 'scroll' };
 
 export class InspectorView extends ItemView {
 	private map: MapView | null = null;
@@ -27,7 +34,10 @@ export class InspectorView extends ItemView {
 	/** A render waited for a field to lose focus. */
 	private pending = false;
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(
+		leaf: WorkspaceLeaf,
+		private readonly settings: () => HexLoreSettings,
+	) {
 		super(leaf);
 	}
 
@@ -114,6 +124,16 @@ export class InspectorView extends ItemView {
 						: 'All changes saved',
 		});
 
+		const lit = this.map.highlightedNote;
+		if (lit) {
+			const map = this.map;
+			new Setting(el)
+				.setName(`Highlighted: ${lit.name}`)
+				.setDesc(`${plural(lit.ids.size, 'hex', 'hexes')} on this map stand for the note you opened.`)
+				.addExtraButton((b) => b.setIcon('locate').setTooltip('Show them').onClick(() => map.showHexes(lit.ids, lit.name)))
+				.addExtraButton((b) => b.setIcon('x').setTooltip('Clear the highlight').onClick(() => map.clearNoteHighlight()))
+				.settingEl.addClass('hexlore-panel-highlight');
+		}
 		if (editor) {
 			if (state.selectedLine) this.renderLine(state.selectedLine, state.heldPoint, editor);
 			else if (state.selectedThread) this.renderThread(state.selectedThread, editor);
@@ -181,12 +201,14 @@ export class InspectorView extends ItemView {
 		this.renderNotes(cell, h?.name ?? null, editor, links);
 	}
 
-	/** The hex's notes: principal first; reorder, unlink, add (plan §1.3). */
+	/** The hex's notes: principal first; reorder, unlink, relink a broken
+	 *  one, add (plan §1.3). Then who is here, and the secondary notes. */
 	private renderNotes(cell: Cell, name: string | null, editor: MapEditor, links: Map<string, string[]>): void {
 		const el = this.contentEl;
 		const id = hexIdFor(...cell);
 		const notes = editor.hexNotes(id).length ? editor.hexNotes(id) : (links.get(id) ?? []);
 		const ro = editor.readOnly;
+		const source = this.indexFile()?.path ?? '';
 		this.section('Notes');
 		if (!notes.length) {
 			el.createDiv({ cls: 'setting-item-description', text: 'No notes linked to this hex yet. Create one, link one, or drag a note from the file explorer onto the hex.' });
@@ -194,6 +216,7 @@ export class InspectorView extends ItemView {
 			const list = el.createDiv({ cls: 'hexlore-panel-notes' });
 			notes.forEach((link, i) => {
 				const row = list.createDiv({ cls: 'hexlore-note-row' });
+				const broken = !resolveLink(this.app, link, source);
 				this.noteLink(row, link, i === 0);
 				const move = (to: number) => {
 					const next = [...notes];
@@ -207,13 +230,23 @@ export class InspectorView extends ItemView {
 					if (disabled) b.addClass('is-disabled');
 					else b.addEventListener('click', action);
 				};
+				if (broken) {
+					row.addClass('is-broken');
+					button('link', 'The note is missing: link another in its place', ro, () =>
+						new NotePicker(this.app, `Relink “${linkPath(link)}” to…`, (file) => {
+							const next = [...notes];
+							next[i] = this.app.metadataCache.fileToLinktext(file, source, true);
+							editor.setHexNotes(id, next, 'Relink note');
+						}).open(),
+					);
+				}
 				button('arrow-up', i === 1 ? 'Make it the principal note' : 'Move up', ro || i === 0, () => move(i - 1));
 				button('arrow-down', 'Move down', ro || i === notes.length - 1, () => move(i + 1));
-				button('x', 'Unlink (the note is kept)', ro, () =>
+				button('x', broken ? 'Remove the broken link' : 'Unlink (the note is kept)', ro, () =>
 					editor.setHexNotes(
 						id,
 						notes.filter((_, j) => j !== i),
-						'Unlink note',
+						broken ? 'Remove broken link' : 'Unlink note',
 					),
 				);
 			});
@@ -232,32 +265,97 @@ export class InspectorView extends ItemView {
 					.setDisabled(ro)
 					.onClick(() =>
 						new NotePicker(this.app, 'Link a note to this hex', (file) => {
-							const index = this.indexFile();
-							if (!index) return;
-							const link = this.app.metadataCache.fileToLinktext(file, index.path, true);
+							const link = this.app.metadataCache.fileToLinktext(file, source, true);
 							const current = editor.hexNotes(id);
 							if (!current.includes(link)) editor.setHexNotes(id, [...current, link], `Link “${file.basename}”`);
 						}).open(),
 					),
 			);
+
+		const files = notes.map((l) => resolveLink(this.app, l, source)).filter((f): f is TFile => !!f);
+		this.renderPeople(files);
+		this.renderSecondary(files);
 	}
 
-	/** "New note here": a title (prefilled with the hex's label) and a
-	 *  section; the note is created there, linked, and opened beside the map. */
+	/** NPCs and quests here: those whose `location` is one of the hex's notes,
+	 *  and those the hex lists itself. */
+	private renderPeople(files: TFile[]): void {
+		if (!files.length) return;
+		const people = peopleAt(this.app, new Set(files.map((f) => f.path)));
+		if (!people.length) return;
+		this.section('People and quests here');
+		const list = this.contentEl.createDiv({ cls: 'hexlore-panel-notes' });
+		for (const f of people) {
+			const row = list.createDiv({ cls: 'hexlore-note-row' });
+			const icon = row.createDiv({ cls: 'hexlore-note-kind' });
+			setIcon(icon, KIND_ICON[noteKind(this.app, f)]);
+			this.fileLink(row, f);
+		}
+	}
+
+	/** The notes the main notes link to (Obsidian's outgoing links): the map
+	 *  does not store them; listed on request. */
+	private renderSecondary(files: TFile[]): void {
+		if (!files.length) return;
+		const main = new Set(files.map((f) => f.path));
+		const seen = new Set<string>();
+		const found: TFile[] = [];
+		const missing: string[] = [];
+		for (const f of files) {
+			const out = outgoingLinks(this.app, f);
+			for (const g of out.resolved) {
+				if (main.has(g.path) || seen.has(g.path) || g.path.endsWith('.hexmap.md')) continue;
+				seen.add(g.path);
+				found.push(g);
+			}
+			for (const u of out.unresolved) if (!missing.includes(u)) missing.push(u);
+		}
+		if (!found.length && !missing.length) return;
+		const details = this.contentEl.createEl('details', { cls: 'hexlore-panel-secondary' });
+		details.open = this.app.loadLocalStorage(SECONDARY_KEY) === true;
+		details.addEventListener('toggle', () => this.app.saveLocalStorage(SECONDARY_KEY, details.open));
+		details.createEl('summary', { text: `Linked from these notes (${found.length + missing.length})` });
+		const list = details.createDiv({ cls: 'hexlore-panel-notes' });
+		for (const f of found) this.fileLink(list.createDiv({ cls: 'hexlore-note-row' }), f);
+		for (const m of missing) list.createDiv({ cls: 'hexlore-note-row is-broken' }).createSpan({ cls: 'internal-link is-unresolved', text: m });
+	}
+
+	private fileLink(parent: HTMLElement, file: TFile): void {
+		const a = parent.createEl('a', { text: file.basename, cls: 'internal-link' });
+		a.addEventListener('click', (e) => {
+			e.preventDefault();
+			void this.app.workspace.getLeaf(e.ctrlKey || e.metaKey ? 'tab' : 'split').openFile(file);
+		});
+		a.addEventListener('mouseover', (e) =>
+			this.app.workspace.trigger('hover-link', { event: e, source: HOVER_SOURCE, hoverParent: this, targetEl: a, linktext: file.path, sourcePath: '' }),
+		);
+	}
+
+	/** "New note here": a title (prefilled with the hex's label), a section,
+	 *  a kind and a template; the note is created there, linked, and opened
+	 *  beside the map. An NPC or a quest made here gets the hex's principal
+	 *  note as its place. */
 	private newHexNote(cell: Cell, label: string, editor: MapEditor): void {
 		const index = this.indexFile();
 		if (!index) return;
-		const sections = sectionsOf(this.app, index) ?? [...DEFAULT_SECTIONS];
-		new NewNoteModal(this.app, label, sections, async (title, folder) => {
-			const clean = title.replace(/[\\/:*?"<>|#^[\]]/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled';
-			const base = normalizePath(folder ? `${folder}/${clean}` : clean);
-			let path = `${base}.md`;
-			for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) path = `${base} ${n}.md`;
-			if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder).catch(() => undefined);
-			const file = await this.app.vault.create(path, `# ${title.trim() || clean}\n\n`);
-			const id = hexIdFor(...cell);
-			editor.setHexNotes(id, [...editor.hexNotes(id), this.app.metadataCache.fileToLinktext(file, index.path, true)], `New note “${file.basename}”`);
-			await this.app.workspace.getLeaf('split').openFile(file);
+		const id = hexIdFor(...cell);
+		const principal = editor.hexNotes(id)[0];
+		const place = principal ? resolveLink(this.app, principal, index.path) : null;
+		new NewNoteModal(this.app, {
+			heading: 'New note for this hex',
+			title: label,
+			sections: sectionsOf(this.app, index) ?? [...DEFAULT_SECTIONS],
+			section: 'Places',
+			templates: templateFiles(this.app, this.settings().templatesFolder),
+			accept: async (choice) => {
+				const file = await createNote(this.app, {
+					...choice,
+					vars: { title: choice.title, hex: displayIdFor(...cell), map: index.basename.replace(/\.hexmap$/, '') },
+					location: place && (choice.kind === 'npc' || choice.kind === 'quest') ? this.app.metadataCache.fileToLinktext(place, '', true) : null,
+				});
+				editor.setHexNotes(id, [...editor.hexNotes(id), this.app.metadataCache.fileToLinktext(file, index.path, true)], `New note “${file.basename}”`);
+				await this.app.workspace.getLeaf('split').openFile(file);
+			},
 		}).open();
 	}
 
@@ -268,8 +366,11 @@ export class InspectorView extends ItemView {
 		if (!this.app.metadataCache.getFirstLinkpathDest(path.split('#')[0]!, source)) a.addClass('is-unresolved');
 		a.addEventListener('click', (e) => {
 			e.preventDefault();
-			void this.app.workspace.openLinkText(path, source, e.ctrlKey || e.metaKey);
+			void this.app.workspace.openLinkText(path, source, e.ctrlKey || e.metaKey ? 'tab' : 'split');
 		});
+		a.addEventListener('mouseover', (e) =>
+			this.app.workspace.trigger('hover-link', { event: e, source: HOVER_SOURCE, hoverParent: this, targetEl: a, linktext: path, sourcePath: source }),
+		);
 	}
 
 	private renderMany(cells: Cell[], editor: MapEditor): void {
@@ -711,30 +812,48 @@ class ConfirmModal extends Modal {
 	}
 }
 
-/** "New note here": a title and the section it goes in. */
-class NewNoteModal extends Modal {
+export interface NewNoteChoice {
+	title: string;
+	folder: string;
+	kind: NoteKind;
+	template: TFile | null;
+}
+
+/** "New note": a title, the section it goes in, its kind and template. */
+export class NewNoteModal extends Modal {
 	constructor(
 		app: App,
-		private readonly initial: string,
-		private readonly sections: Section[],
-		private readonly accept: (title: string, folder: string) => Promise<void>,
+		private readonly opts: {
+			heading: string;
+			title: string;
+			sections: Section[];
+			/** The section chosen at first (by name). */
+			section: string;
+			templates: TFile[];
+			accept: (choice: NewNoteChoice) => Promise<void>;
+		},
 	) {
 		super(app);
 	}
 
 	onOpen(): void {
-		this.setTitle('New note for this hex');
-		let title = this.initial;
-		let folder = this.sections.find((s) => s.name === 'Places')?.folder ?? this.sections[0]?.folder ?? '';
+		const o = this.opts;
+		this.setTitle(o.heading);
+		const first = o.sections.find((s) => s.name === o.section) ?? o.sections[0];
+		const pick: NewNoteChoice = { title: o.title, folder: first?.folder ?? '', kind: defaultKindFor(first?.name ?? ''), template: null };
+		const templateOf = (s: Section | undefined) => (s?.template ? (o.templates.find((t) => t.path === s.template) ?? null) : null);
+		pick.template = templateOf(first);
+		let kindDrop: DropdownComponent | null = null;
+		let templateDrop: DropdownComponent | null = null;
 		const done = () => {
 			this.close();
-			void this.accept(title, folder).catch((e: unknown) => new Notice(`Could not create the note: ${(e as Error).message}`));
+			void o.accept({ ...pick }).catch((e: unknown) => new Notice(`Could not create the note: ${(e as Error).message}`));
 		};
 		new Setting(this.contentEl)
 			.setName('Title')
 			.setDesc('Prefilled with the hex’s name; the two stay independent after.')
 			.addText((t) => {
-				t.setValue(title).onChange((v) => (title = v));
+				t.setValue(pick.title).onChange((v) => (pick.title = v));
 				t.inputEl.addEventListener('keydown', (e) => {
 					if (e.key === 'Enter') {
 						e.preventDefault();
@@ -747,10 +866,34 @@ class NewNoteModal extends Modal {
 			.setName('Section')
 			.setDesc('The folder it goes in.')
 			.addDropdown((d) => {
-				for (const s of this.sections) d.addOption(s.folder, s.name);
-				d.setValue(folder).onChange((v) => (folder = v));
+				for (const s of o.sections) d.addOption(s.folder, s.name);
+				d.setValue(pick.folder).onChange((v) => {
+					pick.folder = v;
+					const s = o.sections.find((x) => x.folder === v);
+					pick.kind = defaultKindFor(s?.name ?? '');
+					kindDrop?.setValue(pick.kind);
+					pick.template = templateOf(s);
+					templateDrop?.setValue(pick.template?.path ?? '');
+				});
 			});
-		new Setting(this.contentEl).addButton((b) => b.setButtonText('Create and link').setCta().onClick(done));
+		new Setting(this.contentEl)
+			.setName('Kind')
+			.setDesc('Characters and quests get their fields in the frontmatter, pointing at their place.')
+			.addDropdown((d) => {
+				kindDrop = d;
+				for (const k of NOTE_KINDS) d.addOption(k.kind, k.label);
+				d.setValue(pick.kind).onChange((v) => (pick.kind = NOTE_KINDS.find((k) => k.kind === v)?.kind ?? 'note'));
+			});
+		new Setting(this.contentEl)
+			.setName('Template')
+			.setDesc(o.templates.length ? 'From the templates folder (plugin settings).' : 'Put notes in the templates folder (plugin settings) to offer them here.')
+			.addDropdown((d) => {
+				templateDrop = d;
+				d.addOption('', 'None');
+				for (const t of o.templates) d.addOption(t.path, t.basename);
+				d.setValue(pick.template?.path ?? '').onChange((v) => (pick.template = o.templates.find((t) => t.path === v) ?? null));
+			});
+		new Setting(this.contentEl).addButton((b) => b.setButtonText('Create').setCta().onClick(done));
 	}
 
 	onClose(): void {
@@ -759,7 +902,7 @@ class NewNoteModal extends Modal {
 }
 
 /** Pick a note in the vault. */
-class NotePicker extends FuzzySuggestModal<TFile> {
+export class NotePicker extends FuzzySuggestModal<TFile> {
 	constructor(
 		app: App,
 		placeholder: string,

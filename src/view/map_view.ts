@@ -20,7 +20,7 @@ import { hexLine } from '../core/line_of_sight';
 import { MapScale } from '../core/map_scale';
 import type { Cell, EditorEvent, LineKind, MapEditor, ThreadSpec } from '../edit/editor';
 import { editorFor } from '../edit/editors';
-import { HOVER_GLOW, SELECT_GLOW, brushCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
+import { HOVER_GLOW, SELECT_GLOW, brushCells, highlightCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
 import { regionInk } from '../render/painter';
 import { sceneHexOf, sceneRegionOf, sceneRiversOf, sceneRoutesOf, sceneThreadOf } from '../render/scene_from_model';
 import { MAX_BRUSH, ROUTE_KINDS, Toolbar, TOOLS, pickFromStored, pickToStored, type StoredPick, type ToolId } from './toolbar';
@@ -36,6 +36,7 @@ import { updateHexLinks } from '../storage/index_file';
 import { LAYER_FILES as LAYER_PATHS } from '../storage/map_codec';
 import type { MapStore, StoreEvent } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
+import { hexesByNote, hexesOfNote } from './vault_notes';
 
 export const MAP_VIEW = 'hexlore-map';
 
@@ -110,6 +111,13 @@ type Gesture =
 	| { kind: 'move'; id: number; start: Cell; x: number; y: number; moved: boolean; delta: Cell; valid: boolean; additive: boolean; base: Set<string> };
 
 const cellKeyOf = ([q, r]: Cell) => `${q},${r}`;
+const cellOfId = (id: string): Cell | null => {
+	const m = /^q(-?\d+)_r(-?\d+)$/.exec(id);
+	return m ? [Number(m[1]), Number(m[2])] : null;
+};
+const idsToCells = (ids: Iterable<string>): Cell[] => [...ids].map(cellOfId).filter((c): c is Cell => !!c);
+/** The highlight of a note's hexes (gold, apart from selection purple). */
+const NOTE_GLOW = '#E8B84A';
 const cellOfKey = (k: string) => k.split(',').map(Number) as Cell;
 const cameraKey = (path: string) => `hexlore-camera:${path}`;
 
@@ -189,6 +197,10 @@ export class MapView extends ItemView {
 	private overlays: OverlayState = { threads: true, hiddenThreadColors: [], regions: true, hiddenRegions: [], borders: true };
 	/** Region id → its note, from the index. */
 	private regionLinks = new Map<string, string[]>();
+	/** The hexes the note being read stands for (an NPC: its place's hexes),
+	 *  and the ones a hovered note in the sections list stands for. */
+	private noteHighlight: { name: string; ids: Set<string> } | null = null;
+	private hoverHighlight: Set<string> | null = null;
 	/** Closed: the panel must stop showing this view. */
 	closed = false;
 
@@ -197,7 +209,7 @@ export class MapView extends ItemView {
 		private readonly openAsMarkdown: (file: TFile, leaf: WorkspaceLeaf) => void,
 		private readonly registry: StoreRegistry,
 		/** The map panel: make sure it exists; show or hide it. */
-		private readonly panel: { ensure: () => Promise<void>; toggle: () => Promise<void> },
+		private readonly panel: { ensure: () => Promise<void>; toggle: () => Promise<void>; sections: () => Promise<void> },
 	) {
 		super(leaf);
 		this.navigation = true;
@@ -295,6 +307,7 @@ export class MapView extends ItemView {
 		});
 		this.addAction('maximize', 'Fit the map', () => this.canvas.fit());
 		this.addAction('panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => void this.panel.toggle());
+		this.addAction('library', 'Show or hide the sections (the campaign’s notes, by folder)', () => void this.panel.sections());
 		this.addAction('palette', 'Map style', (evt) => this.styleMenu(evt));
 
 		this.wireInput();
@@ -308,8 +321,11 @@ export class MapView extends ItemView {
 				}
 			}),
 		);
+		// The note being read: highlight the hexes it stands for.
+		this.registerEvent(this.app.workspace.on('file-open', (f) => this.followNote(f)));
 		this.registerEvent(
 			this.app.metadataCache.on('changed', (f) => {
+				if (f === this.app.workspace.getActiveFile() && f !== this.file) this.followNote(f);
 				if (f !== this.file) return;
 				// The index's `data:` may point somewhere else now; else its links changed.
 				if (dataFolderOf(this.app, f) !== this.dataDir) void this.loadMap();
@@ -828,6 +844,8 @@ export class MapView extends ItemView {
 		const grid = scene?.grid;
 		if (grid && scene) {
 			const k = 1 / f.camera.scale; // scene units per screen px
+			if (this.noteHighlight) highlightCells(f, idsToCells(this.noteHighlight.ids), NOTE_GLOW, 0.16, 2.5);
+			if (this.hoverHighlight) highlightCells(f, idsToCells(this.hoverHighlight), NOTE_GLOW, 0.32, 3.5);
 			if (this.selection.size) strokeCells(f, [...this.selection].map(cellOfKey), SELECT_GLOW, 3);
 			// The anchor field, while points are being placed or dragged.
 			const placing = this.tool === 'river' || this.tool === 'route' || this.gesture?.kind === 'line';
@@ -1300,6 +1318,66 @@ export class MapView extends ItemView {
 			if (!next.delete(cellKeyOf(cell))) next.add(cellKeyOf(cell));
 			this.setSelection(next);
 		} else this.setSelection([cellKeyOf(cell)]);
+	}
+
+	// ----- notes on the map (item 2.5) -----------------------------------------------
+
+	/** Note path → the hexes listing it. */
+	hexesByNote(): Map<string, Set<string>> {
+		return this.file ? hexesByNote(this.app, this.file, this.links) : new Map<string, Set<string>>();
+	}
+
+	/** The hexes [file] stands for on this map. */
+	hexesOf(file: TFile): Set<string> {
+		return hexesOfNote(this.app, file, this.hexesByNote());
+	}
+
+	/** A note was opened: highlight its hexes (a note that is on no hex of
+	 *  this map leaves the last highlight, so clicking back to the map keeps
+	 *  what was being read). */
+	private followNote(file: TFile | null): void {
+		if (!file || file === this.file || file.extension !== 'md') return;
+		const index: boolean = isMapIndex(this.app, file);
+		if (index) return;
+		const ids = this.hexesOf(file);
+		const next = ids.size ? { name: file.basename, ids } : null;
+		if (!next && !this.noteHighlight) return;
+		this.noteHighlight = next;
+		this.canvas.paintOverlay();
+		this.broadcast();
+	}
+
+	/** The hexes highlighted for the note being read, if any. */
+	get highlightedNote(): { name: string; ids: Set<string> } | null {
+		return this.noteHighlight;
+	}
+
+	clearNoteHighlight(): void {
+		this.noteHighlight = null;
+		this.canvas.paintOverlay();
+		this.broadcast();
+	}
+
+	/** Hovering a note elsewhere (the sections list): its hexes, or null. */
+	setHoverHighlight(ids: Set<string> | null): void {
+		this.hoverHighlight = ids && ids.size ? ids : null;
+		this.canvas.paintOverlay();
+	}
+
+	/** Bring [ids] into view and highlight them as [name]'s. */
+	showHexes(ids: Set<string>, name: string): void {
+		const cells = [...ids].map(cellOfId).filter((c): c is Cell => !!c);
+		if (!cells.length) return;
+		let x = 0, y = 0;
+		for (const [q, r] of cells) {
+			const [px, py] = axialToPixel(q, r);
+			x += px;
+			y += py;
+		}
+		this.canvas.centreOn(x / cells.length, y / cells.length);
+		this.noteHighlight = { name, ids };
+		this.canvas.paintOverlay();
+		this.broadcast();
 	}
 
 	/** Open a hex's principal note in a pane beside the map. */
