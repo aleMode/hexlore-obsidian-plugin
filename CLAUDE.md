@@ -128,6 +128,19 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   note being read (gold), and "Show this note on the map" centres on them.
   A hex holding ONLY notes (no map record) is a hex like any other for
   cut / copy / paste / delete / move / explode / resize.
+- `src/server/` — the player view (item 2.6). `player_server.ts` is the
+  HTTP server (Node `http` passed in; tests run it on a real socket): the
+  player page (`assets.ts`: vendor/player/ files as text, `?raw` imports),
+  `/api/map` = the ported `player_filter` output with an ETag (304 while
+  unchanged; `player.js` sends it back), `/api/votes`, `POST /api/vote`
+  (`core/travel_votes.ts`, in memory, checked against the GRID). Ports
+  5174–5180, localhost unless the LAN setting is on. `control.ts` is the
+  Obsidian side: one map served at a time, from its LIVE store model (a
+  reveal reaches players on the next poll), a newer format refused (503),
+  `http`/`os` imported only under `Platform.isDesktop` (the lint rule wants
+  that guard), status-bar link, vote badges on the GM map, "Player view"
+  in the map panel. `/api/art` (the registry as data) is NOT done: it needs
+  `player.js` to take its tables from the server, a Flutter-side change.
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane

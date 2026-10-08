@@ -1,4 +1,5 @@
 import { MarkdownView, Notice, Plugin, TFile, type SettingDefinitionItem, type WorkspaceLeaf } from 'obsidian';
+import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings, type SettingsHost } from './settings';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
@@ -13,17 +14,22 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 	private asMarkdown = new Set<string>();
 
 	private stores!: StoreRegistry;
+	players!: PlayerControl;
 
 	async onload() {
 		this.settings = readSettings(await this.loadData());
 		this.addSettingTab(new HexLoreSettingTab(this.app, this));
 		this.stores = new StoreRegistry(this);
+		this.players = new PlayerControl(this.app, this.stores, () => this.settings, () => this.saveSettings());
+		this.settingGroups.push(() => this.players.settingGroup());
+		this.players.attachStatusBar(this.addStatusBarItem());
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
 				toggle: () => this.togglePanel(),
 				sections: () => this.toggleSections(),
+				votes: (file) => this.players.voteCounts(file),
 			}));
-		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings));
+		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
 		// Ctrl-hover on a hex previews its principal note (Page preview).
 		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Hex maps', defaultMod: true });
@@ -37,6 +43,35 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 			id: 'show-sections',
 			name: 'Show the map sections',
 			callback: () => void this.showSections(true),
+		});
+		this.addCommand({
+			id: 'start-player-view',
+			name: 'Start the player view for this map',
+			checkCallback: (checking) => {
+				const file = this.activeMapFile();
+				if (!file) return false;
+				if (!checking) void this.players.start(file);
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'stop-player-view',
+			name: 'Stop the player view',
+			checkCallback: (checking) => {
+				if (!this.players.running) return false;
+				if (!checking) void this.players.stop();
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'copy-player-link',
+			name: 'Copy the player view link',
+			checkCallback: (checking) => {
+				const url = this.players.url;
+				if (!url) return false;
+				if (!checking) void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`));
+				return true;
+			},
 		});
 		this.addCommand({
 			id: 'show-note-on-map',
@@ -80,7 +115,20 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 		});
 	}
 
+	settingChanged(key: string): void {
+		if (key === 'playerLan') void this.players.lanChanged();
+	}
+
+	/** The map of the active view (a map view, or its index open as Markdown). */
+	private activeMapFile(): TFile | null {
+		const view = this.app.workspace.getActiveViewOfType(MapView);
+		if (view) return view.mapState().file;
+		const file = this.app.workspace.getActiveFile();
+		return isMapIndex(this.app, file) ? file : null;
+	}
+
 	onunload() {
+		void this.players.stop(false);
 		// Unsaved edits are written before the plugin goes (best effort:
 		// Obsidian does not wait for this).
 		void this.stores.flushAll();

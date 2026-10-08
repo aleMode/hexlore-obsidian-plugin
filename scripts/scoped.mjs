@@ -43,3 +43,20 @@ export const scopedVitePlugin = {
 		return scopedSource(id.slice(0, -SCOPED_SUFFIX.length));
 	},
 };
+
+/** `import text from '…?raw'`: a file's text as a string (the player page's
+ *  files, served as they are). Vite does this natively; this is esbuild's. */
+export const rawEsbuildPlugin = {
+	name: 'raw',
+	setup(build) {
+		build.onResolve({ filter: /\?raw$/ }, (args) => ({
+			path: path.resolve(args.resolveDir, args.path.slice(0, -'?raw'.length)),
+			namespace: 'raw',
+		}));
+		build.onLoad({ filter: /.*/, namespace: 'raw' }, async (args) => ({
+			contents: await readFile(args.path, 'utf8'),
+			loader: 'text',
+			watchFiles: [args.path],
+		}));
+	},
+};

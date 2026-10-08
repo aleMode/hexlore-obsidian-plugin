@@ -7,10 +7,13 @@ import { PluginSettingTab, type App, type Plugin, type SettingDefinitionItem } f
 export interface HexLoreSettings {
 	/** Where note templates are looked for (the "New note" dialog lists them). */
 	templatesFolder: string;
+	/** The player view is reachable from the local network, not just here. */
+	playerLan: boolean;
 }
 
 export const DEFAULT_SETTINGS: HexLoreSettings = {
 	templatesFolder: 'Templates',
+	playerLan: false,
 };
 
 /** Read settings tolerantly: unknown keys are kept (a newer build's). */
@@ -19,6 +22,7 @@ export function readSettings(raw: unknown): HexLoreSettings & Record<string, unk
 	return {
 		...o,
 		templatesFolder: typeof o.templatesFolder === 'string' ? o.templatesFolder : DEFAULT_SETTINGS.templatesFolder,
+		playerLan: typeof o.playerLan === 'boolean' ? o.playerLan : DEFAULT_SETTINGS.playerLan,
 	};
 }
 
@@ -27,6 +31,8 @@ export interface SettingsHost extends Plugin {
 	saveSettings(): Promise<void>;
 	/** Setting groups other modules add (the player server). */
 	settingGroups: (() => SettingDefinitionItem[])[];
+	/** A setting was changed from the tab (after it was saved). */
+	settingChanged(key: string): void;
 }
 
 export class HexLoreSettingTab extends PluginSettingTab {
@@ -52,5 +58,10 @@ export class HexLoreSettingTab extends PluginSettingTab {
 			},
 			...this.host.settingGroups.flatMap((g) => g()),
 		];
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		await super.setControlValue(key, value);
+		this.host.settingChanged(key);
 	}
 }

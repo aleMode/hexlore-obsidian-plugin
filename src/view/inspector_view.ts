@@ -15,6 +15,7 @@ import { sectionsOf, updateRegionLinks } from '../storage/index_file';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
 import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
 import type { HexLoreSettings } from '../settings';
+import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { createNote, linkPath, noteKind, outgoingLinks, peopleAt, resolveLink, templateFiles } from './vault_notes';
 import { ROUTE_KINDS } from './toolbar';
 
@@ -37,6 +38,7 @@ export class InspectorView extends ItemView {
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly settings: () => HexLoreSettings,
+		private readonly players: PlayerControl,
 	) {
 		super(leaf);
 	}
@@ -65,6 +67,7 @@ export class InspectorView extends ItemView {
 				if (leaf?.view instanceof MapView) this.follow(leaf.view);
 			}),
 		);
+		this.registerEvent((this.app.workspace as Events).on(PLAYERS_EVENT, () => this.render()));
 		this.registerEvent(
 			(this.app.workspace as Events).on(MAP_STATE_EVENT, (view: unknown) => {
 				if (!(view instanceof MapView)) return;
@@ -140,7 +143,10 @@ export class InspectorView extends ItemView {
 			else if (state.selection.length === 1) this.renderHex(state.selection[0]!, editor, state.links);
 			else if (state.selection.length > 1) this.renderMany(state.selection, editor);
 			if (state.tool === 'region' || (!state.selectedLine && !state.selectedThread && !state.selection.length)) this.renderRegions(state, editor);
-			if (!state.selectedLine && !state.selectedThread && !state.selection.length && state.tool !== 'region') this.renderSummary(editor);
+			if (!state.selectedLine && !state.selectedThread && !state.selection.length && state.tool !== 'region') {
+				this.renderSummary(editor);
+				this.renderPlayerView(state.file, editor);
+			}
 		}
 		this.renderDisplay(state);
 		el.scrollTop = scroll;
@@ -162,6 +168,60 @@ export class InspectorView extends ItemView {
 		info.createDiv({ text: `${plural(m.rivers.size, 'river')}, ${plural(m.routes.size, 'road or border', 'roads and borders')}, ${plural(m.threads.size, 'thread')}` });
 		info.createDiv({ text: `${plural(m.revealed.size, 'hex', 'hexes')} revealed to players` });
 		info.createDiv({ text: m.meta.scale.describe() });
+	}
+
+	// ----- the player view (item 2.6) -------------------------------------------------
+
+	private renderPlayerView(file: TFile | null, editor: MapEditor): void {
+		const el = this.contentEl;
+		const p = this.players;
+		this.section('Player view');
+		if (!file) return;
+		if (p.serves(file) && p.url) {
+			const url = p.url;
+			new Setting(el)
+				.setName('Players see this map')
+				.setDesc(url)
+				.addButton((b) => b.setButtonText('Copy link').onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))))
+				.addButton((b) => b.setButtonText('Open').onClick(() => window.open(url)))
+				.addButton((b) =>
+					b
+						.setButtonText('Stop')
+						.setDestructive()
+						.onClick(() => void p.stop()),
+				);
+			const results = p.votes();
+			if (!results.length) {
+				el.createDiv({ cls: 'setting-item-description', text: 'No travel votes yet: players click a hex on their map to vote for where the party goes next.' });
+				return;
+			}
+			const list = el.createDiv({ cls: 'hexlore-panel-notes' });
+			for (const r of results) {
+				const row = list.createDiv({ cls: 'hexlore-note-row hexlore-vote-row' });
+				row.createSpan({ cls: 'hexlore-vote-count', text: String(r.voterNames.length) });
+				const m = /^q(-?\d+)_r(-?\d+)$/.exec(r.hexId);
+				const q = Number(m?.[1]), rr = Number(m?.[2]);
+				const label = editor.model.hexes.get(r.hexId)?.name || (m ? displayIdFor(q, rr) : r.hexId);
+				const a = row.createEl('a', { text: label, cls: 'internal-link' });
+				a.addEventListener('click', (e) => {
+					e.preventDefault();
+					this.map?.showHexes(new Set([r.hexId]), `Votes for ${label}`);
+				});
+				row.createSpan({ cls: 'hexlore-vote-names', text: r.voterNames.join(', ') });
+			}
+			new Setting(el).addButton((b) => b.setButtonText('Clear votes').onClick(() => p.clearVotes()));
+		} else {
+			const other = p.running && p.file ? p.file.basename.replace(/\.hexmap$/, '') : null;
+			new Setting(el)
+				.setName(other ? `Players see “${other}”` : 'Off')
+				.setDesc('Players open a link in a browser and see only the revealed map — never notes, regions or threads.')
+				.addButton((b) =>
+					b
+						.setButtonText(other ? 'Serve this map instead' : 'Start')
+						.setCta()
+						.onClick(() => void p.start(file)),
+				);
+		}
 	}
 
 	// ----- hexes ---------------------------------------------------------------------

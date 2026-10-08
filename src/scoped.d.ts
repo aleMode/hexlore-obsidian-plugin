@@ -5,3 +5,9 @@ declare module '*?scoped' {
 	const load: (globalThis: Record<string, unknown>, ...rest: unknown[]) => unknown;
 	export default load;
 }
+
+/** A file's text (scripts/scoped.mjs `rawEsbuildPlugin`; Vite natively). */
+declare module '*?raw' {
+	const text: string;
+	export default text;
+}

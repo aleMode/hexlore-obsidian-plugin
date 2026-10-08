@@ -509,18 +509,20 @@ try {
 } catch (_) {
   /* storage blocked: keep the default */
 }
-// ?style=clean|illustrated and ?blend=0|1 override the saved choice for this
-// visit only (handy for comparing looks, and for scripted screenshots).
-{
-  const q = new URLSearchParams(location.search);
-  if (q.get("style") === "clean" || q.get("style") === "illustrated") mapStyle = q.get("style");
-  if (q.has("blend")) blendEdges = q.get("blend") === "1";
-}
 let mapStyle = "illustrated";
 try {
   mapStyle = localStorage.getItem(STYLE_KEY) || "illustrated";
 } catch (_) {
   /* storage blocked: keep the default */
+}
+// ?style=clean|illustrated and ?blend=0|1 override the saved choice for this
+// visit only (handy for comparing looks, and for scripted screenshots). Read
+// AFTER both saved values, so the URL wins — and after `let mapStyle`, which
+// assigning earlier throws (a ReferenceError that stopped the page loading).
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get("style") === "clean" || q.get("style") === "illustrated") mapStyle = q.get("style");
+  if (q.has("blend")) blendEdges = q.get("blend") === "1";
 }
 
 // ----- illustrated textures -------------------------------------------------
@@ -1527,10 +1529,24 @@ function hexAt(q, r) { return hexByKey.get(cellKey(q, r)) || null; }
 // re-centre every poll and yank the view out from under a panning player.
 let framed = false;
 
+// The server tags each payload (ETag); a poll that carries the tag back gets
+// 304 while nothing changed, so an idle map is not re-sent every 4 s. A
+// server without tags simply answers 200 every time.
+let mapTag = null;
+
 async function fetchMap() {
   try {
-    const res = await fetch("/api/map", { cache: "no-store" });
+    const res = await fetch("/api/map", {
+      cache: "no-store",
+      headers: mapTag ? { "If-None-Match": mapTag } : {},
+    });
+    if (res.status === 304 && state) {
+      statusEl.textContent = `${state.hexes.length} revealed hexes`;
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    mapTag = res.headers.get("ETag");
     const firstLoad = !framed;
     framed = true;
     state = data;

@@ -283,3 +283,33 @@ export function drawGhost(f: OverlayFrame, cells: [number, number][], color: str
 	c.lineWidth = 2 / f.camera.scale;
 	c.stroke();
 }
+
+const VOTE_BADGE = '#7A55D4';
+const VOTE_INK = '#E8E8F0'; // Flutter's labelColor
+
+/** Live player travel votes: a numbered pill on every voted hex (Flutter's
+ *  _paintVotes). Fixed in SCREEN pixels so it stays legible zoomed out. */
+export function drawVotes(f: OverlayFrame, counts: Map<string, number>): void {
+	if (!counts.size) return;
+	sceneSpace(f);
+	const c = f.c;
+	const s = 1 / f.camera.scale;
+	for (const [id, n] of counts) {
+		const m = /^q(-?\d+)_r(-?\d+)$/.exec(id);
+		if (!m) continue;
+		const [cx, cy] = axialToPixel(Number(m[1]), Number(m[2]));
+		const y = cy + R * 0.5;
+		c.beginPath();
+		c.arc(cx, y, 10 * s, 0, Math.PI * 2);
+		c.fillStyle = VOTE_BADGE;
+		c.fill();
+		c.lineWidth = 2 * s;
+		c.strokeStyle = VOTE_INK;
+		c.stroke();
+		c.font = `700 ${13 * s}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+		c.textAlign = 'center';
+		c.textBaseline = 'middle';
+		c.fillStyle = VOTE_INK;
+		c.fillText(String(n), cx, y + 0.5 * s);
+	}
+}

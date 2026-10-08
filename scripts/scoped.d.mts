@@ -5,3 +5,4 @@ export const SCOPED_SUFFIX: string;
 export function scopedSource(file: string): Promise<string>;
 export const scopedEsbuildPlugin: EsbuildPlugin;
 export const scopedVitePlugin: VitePlugin;
+export const rawEsbuildPlugin: EsbuildPlugin;

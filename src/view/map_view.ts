@@ -6,7 +6,7 @@
 // Camera and display choices are per device (§1.2): they live in the vault's
 // local storage, never in a synced file.
 
-import { ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
 import { nearestAnchor } from '../core/anchors';
 import { axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
 import { fitPaste, topLeftCell } from '../core/hex_clipboard';
@@ -20,7 +20,7 @@ import { hexLine } from '../core/line_of_sight';
 import { MapScale } from '../core/map_scale';
 import type { Cell, EditorEvent, LineKind, MapEditor, ThreadSpec } from '../edit/editor';
 import { editorFor } from '../edit/editors';
-import { HOVER_GLOW, SELECT_GLOW, brushCells, highlightCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
+import { HOVER_GLOW, SELECT_GLOW, brushCells, drawVotes, highlightCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
 import { regionInk } from '../render/painter';
 import { sceneHexOf, sceneRegionOf, sceneRiversOf, sceneRoutesOf, sceneThreadOf } from '../render/scene_from_model';
 import { MAX_BRUSH, ROUTE_KINDS, Toolbar, TOOLS, pickFromStored, pickToStored, type StoredPick, type ToolId } from './toolbar';
@@ -37,6 +37,7 @@ import { LAYER_FILES as LAYER_PATHS } from '../storage/map_codec';
 import type { MapStore, StoreEvent } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
 import { hexesByNote, hexesOfNote } from './vault_notes';
+import { PLAYERS_EVENT } from '../server/control';
 
 export const MAP_VIEW = 'hexlore-map';
 
@@ -209,7 +210,13 @@ export class MapView extends ItemView {
 		private readonly openAsMarkdown: (file: TFile, leaf: WorkspaceLeaf) => void,
 		private readonly registry: StoreRegistry,
 		/** The map panel: make sure it exists; show or hide it. */
-		private readonly panel: { ensure: () => Promise<void>; toggle: () => Promise<void>; sections: () => Promise<void> },
+		private readonly panel: {
+			ensure: () => Promise<void>;
+			toggle: () => Promise<void>;
+			sections: () => Promise<void>;
+			/** Live player votes on this map: hex id → count. */
+			votes: (file: TFile | null) => Map<string, number>;
+		},
 	) {
 		super(leaf);
 		this.navigation = true;
@@ -321,6 +328,8 @@ export class MapView extends ItemView {
 				}
 			}),
 		);
+		// Player votes come and go: redraw their badges.
+		this.registerEvent((this.app.workspace as Events).on(PLAYERS_EVENT, () => this.canvas.paintOverlay()));
 		// The note being read: highlight the hexes it stands for.
 		this.registerEvent(this.app.workspace.on('file-open', (f) => this.followNote(f)));
 		this.registerEvent(
@@ -892,6 +901,7 @@ export class MapView extends ItemView {
 					strokeCells(f, [hover], HOVER_GLOW, 2.5);
 				}
 			}
+			drawVotes(f, this.panel.votes(this.file));
 			const g = this.gesture;
 			if (g?.kind === 'move' && g.moved) {
 				const ghost = [...this.selection].map(cellOfKey).map(([q, r]): Cell => [q + g.delta[0], r + g.delta[1]]);
