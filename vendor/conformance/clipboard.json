@@ -1,0 +1,10 @@
+{
+  "about": "hex cut/copy/paste (decision 29)",
+  "cases": [
+    {"fn":"copyHexName","in":["Fort",[]],"out":"Fort"},
+    {"fn":"copyHexName","in":["Fort",["Fort"]],"out":"Fort - 2"},
+    {"fn":"copyHexName","in":["Fort",["Fort","Fort - 2"]],"out":"Fort - 3"},
+    {"fn":"copyHexName","in":["Fort - 2",["Fort","Fort - 2"]],"out":"Fort - 3"},
+    {"fn":"fitPaste","in":{"anchor":[0,0],"hexes":[[0,0],[1,0],[0,1]],"selection":[[5,5]]},"out":{"at":[5,5],"footprint":[[5,5],[5,6],[6,5]]}}
+  ]
+}

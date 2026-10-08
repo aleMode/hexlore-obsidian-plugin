@@ -1,0 +1,6 @@
+{
+  "about": "a campaign saved in format 2: path -> text",
+  "cases": [
+    {"fn":"FileManager.saveCampaign","in":null,"out":{"campaign.json":"{\n  \"format\": 2,\n  \"name\": \"Fixture\",\n  \"grid_cols\": 40,\n  \"grid_rows\": 30,\n  \"grid_min_q\": 0,\n  \"grid_r_shift\": 0,\n  \"hex_distance\": 6.0,\n  \"distance_unit\": \"mi\"\n}\n","paint/c_0_0.json":"[\n  {\"q\":0,\"r\":0,\"terrain\":\"forest\",\"terrain_variant\":\"forest/dead\"},\n  {\"q\":1,\"r\":0,\"terrain\":\"desert\",\"terrain_variant\":\"desert/beach\",\"feature\":\"well\",\"feature_variant\":\"well/fountain\",\"feature_hidden\":true,\"tags\":[\"oasis\"]}\n]\n","paint/c_1_0.json":"[\n  {\"q\":17,\"r\":-3,\"terrain\":\"mountain\",\"terrain_variant\":\"mountain/snowy-range\"}\n]\n","paint/c_-1_0.json":"[\n  {\"q\":-5,\"r\":4,\"terrain\":\"lake\"}\n]\n","rivers/rivers.json":"[\n  {\"id\":\"river_001\",\"vertices\":[[\"v\",0,0,0],[\"e\",0,0,1]],\"width\":1.0}\n]\n","routes/routes.json":"[\n  {\"id\":\"route_001\",\"kind\":\"trail\",\"nodes\":[{\"kind\":\"c\",\"q\":0,\"r\":0,\"k\":0},{\"kind\":\"c\",\"q\":1,\"r\":0,\"k\":0}],\"color\":\"#6B4A2F\",\"width\":1.0,\"player_visible\":true}\n]\n","player/revealed.json":"{\n  \"revealed\": [\n    \"q0_r0\"\n  ]\n}\n"}}
+  ]
+}

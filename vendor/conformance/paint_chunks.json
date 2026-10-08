@@ -1,0 +1,19 @@
+{
+  "about": "format-2 chunk keys (16x16, on the lattice)",
+  "cases": [
+    {"fn":"chunkOf","in":[0,0],"out":[0,0,"c_0_0.json"]},
+    {"fn":"chunkOf","in":[1,0],"out":[0,0,"c_0_0.json"]},
+    {"fn":"chunkOf","in":[0,1],"out":[0,0,"c_0_0.json"]},
+    {"fn":"chunkOf","in":[-1,0],"out":[-1,-1,"c_-1_-1.json"]},
+    {"fn":"chunkOf","in":[3,-2],"out":[0,-1,"c_0_-1.json"]},
+    {"fn":"chunkOf","in":[-4,7],"out":[-1,0,"c_-1_0.json"]},
+    {"fn":"chunkOf","in":[17,-9],"out":[1,-1,"c_1_-1.json"]},
+    {"fn":"chunkOf","in":[-16,8],"out":[-1,0,"c_-1_0.json"]},
+    {"fn":"chunkOf","in":[15,0],"out":[0,0,"c_0_0.json"]},
+    {"fn":"chunkOf","in":[16,0],"out":[1,0,"c_1_0.json"]},
+    {"fn":"chunkOf","in":[16,-8],"out":[1,0,"c_1_0.json"]},
+    {"fn":"chunkOf","in":[-1,1],"out":[-1,0,"c_-1_0.json"]},
+    {"fn":"chunkOf","in":[31,-16],"out":[1,-1,"c_1_-1.json"]},
+    {"fn":"chunkOf","in":[-17,9],"out":[-2,0,"c_-2_0.json"]}
+  ]
+}

@@ -1,0 +1,419 @@
+/* HexLore plugin styles. */
+
+.hexlore-map-view {
+	padding: 0 !important;
+	overflow: hidden;
+	position: relative;
+}
+
+.hexlore-map-stage {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	background: #1a1a2e; /* the map's own background, as the Flutter canvas */
+	touch-action: none;
+	cursor: default;
+}
+
+.hexlore-map-stage.is-panning {
+	cursor: grabbing;
+}
+
+.hexlore-map-stage canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.hexlore-map-overlay {
+	pointer-events: none;
+}
+
+.hexlore-map-tooltip {
+	position: absolute;
+	left: var(--x, 0);
+	top: var(--y, 0);
+	pointer-events: none;
+	max-width: 260px;
+	padding: var(--size-4-1) var(--size-4-2);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	z-index: 2;
+}
+
+.hexlore-map-tooltip-title {
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-map-tooltip-id {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-map-notice {
+	position: absolute;
+	top: var(--size-4-2);
+	left: 50%;
+	transform: translateX(-50%);
+	padding: var(--size-4-1) var(--size-4-3);
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	white-space: pre-line;
+	max-width: 80%;
+	z-index: 3;
+}
+
+/* --- Tool strip (item 2.4) --------------------------------------------------- */
+.hexlore-toolbar {
+	position: absolute;
+	top: var(--size-4-2);
+	left: var(--size-4-2);
+	z-index: 4;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	pointer-events: none;
+}
+
+.hexlore-toolbar-group {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 3px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	pointer-events: auto;
+}
+
+.hexlore-toolbar .clickable-icon.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.hexlore-toolbar .clickable-icon.is-disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.hexlore-toolbar.is-read-only .hexlore-tool[data-tool='paint'],
+.hexlore-toolbar.is-read-only .hexlore-tool[data-tool='fog'] {
+	opacity: 0.35;
+}
+
+.hexlore-brush-value {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	min-width: 1.5em;
+	text-align: center;
+}
+
+.hexlore-chip {
+	width: 20px;
+	height: 20px;
+	border-radius: var(--radius-s);
+	background: var(--chip, transparent);
+	border: 1px solid var(--background-modifier-border);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #e8e8f0;
+}
+
+.hexlore-chip.is-empty {
+	color: var(--text-normal);
+}
+
+.hexlore-palette {
+	position: absolute;
+	left: calc(100% + var(--size-4-2));
+	top: 0;
+	width: 236px;
+	padding: var(--size-4-2);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-l);
+	pointer-events: auto;
+}
+
+.hexlore-palette-title {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin: var(--size-4-1) 0;
+}
+
+.hexlore-palette-grid {
+	display: grid;
+	grid-template-columns: repeat(6, 1fr);
+	gap: 4px;
+}
+
+.hexlore-palette-item {
+	height: 30px;
+	border-radius: var(--radius-s);
+	background: var(--chip, var(--background-secondary));
+	border: 2px solid transparent;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	color: var(--text-normal);
+}
+
+.hexlore-palette-item.is-active {
+	border-color: var(--interactive-accent);
+}
+
+.hexlore-palette-variants {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: var(--size-4-1);
+}
+
+.hexlore-palette-variants button {
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	height: auto;
+}
+
+.hexlore-map-stage:focus {
+	outline: none;
+}
+
+/* --- HexLore panel ------------------------------------------------------------ */
+.hexlore-panel-header {
+	margin-bottom: var(--size-4-3);
+}
+
+.hexlore-panel-title {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+}
+
+.hexlore-panel-status,
+.hexlore-panel-coords {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: normal;
+}
+
+.hexlore-panel-facts {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: var(--size-4-2) 0;
+}
+
+.hexlore-panel-section {
+	margin: var(--size-4-4) 0 var(--size-4-1);
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-panel-notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.hexlore-panel-notes .is-principal {
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-panel-empty {
+	color: var(--text-muted);
+	padding: var(--size-4-4);
+	text-align: center;
+}
+
+/* The panel is a narrow sidebar: stack each setting (label, then control)
+   instead of Obsidian's side-by-side settings row. */
+.hexlore-panel .setting-item {
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) 0;
+	border-top: none;
+}
+
+.hexlore-panel .setting-item-info {
+	margin-inline-end: 0;
+}
+
+.hexlore-panel .setting-item-control {
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}
+
+.hexlore-panel .setting-item-control input[type='text'] {
+	width: 100%;
+}
+
+/* A toggle reads better beside its label, even when narrow. */
+.hexlore-panel .setting-item.mod-toggle {
+	flex-direction: row;
+	align-items: center;
+}
+
+/* --- Stage B: routes, threads, regions, overlays -------------------------------- */
+.hexlore-route-color {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+}
+
+.hexlore-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.hexlore-swatch {
+	width: 26px;
+	height: 26px;
+	border-radius: var(--radius-s);
+	background: var(--chip);
+	border: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-bold);
+	color: #fff;
+	flex: none;
+}
+
+.hexlore-swatch.is-active {
+	outline: 3px solid var(--text-normal);
+	outline-offset: 1px;
+}
+
+.hexlore-swatch.is-small {
+	width: 14px;
+	height: 14px;
+	border-radius: 3px;
+}
+
+.hexlore-region-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.hexlore-region-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: 2px var(--size-4-1);
+	border-radius: var(--radius-s);
+}
+
+.hexlore-region-row.is-active {
+	background: var(--background-modifier-active-hover);
+}
+
+.hexlore-region-name {
+	flex: 1;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hexlore-region-count {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-panel-thread {
+	border-left: 4px solid var(--thread);
+	padding-left: var(--size-4-2);
+}
+
+.hexlore-panel-display {
+	margin-top: var(--size-4-4);
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: var(--size-4-2);
+}
+
+.hexlore-panel-display > summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-panel-subtitle {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	margin-top: var(--size-4-3);
+}
+
+.hexlore-panel .setting-item.hexlore-sub-row {
+	flex-direction: row;
+	align-items: center;
+	padding-left: var(--size-4-4);
+}
+
+.hexlore-sub-row .setting-item-name {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.hexlore-sub-row.is-dimmed {
+	opacity: 0.5;
+}
+
+.hexlore-warning {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.hexlore-warning.mod-warning {
+	color: var(--text-error);
+}
+
+.hexlore-note-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.hexlore-note-row > a {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hexlore-note-row .clickable-icon {
+	padding: 2px;
+}
+
+.hexlore-note-row .clickable-icon.is-disabled {
+	opacity: 0.3;
+	cursor: default;
+}

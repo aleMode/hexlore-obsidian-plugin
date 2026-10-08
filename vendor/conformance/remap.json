@@ -1,0 +1,8 @@
+{
+  "about": "explode / move transforms",
+  "cases": [
+    {"fn":"explodeTransform","in":{"anchor":[0,0],"k":2,"cell":[1,0]},"out":[2,0]},
+    {"fn":"explodeTransform","in":{"anchor":[1,0],"k":2,"cell":[0,0]},"out":[-1,0]},
+    {"fn":"explodeTransform","in":{"anchor":[-3,2],"k":3,"cell":[4,-1]},"out":[18,-7]}
+  ]
+}

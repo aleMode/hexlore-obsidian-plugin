@@ -1,0 +1,29 @@
+{
+  "about": "variant id <-> index tables",
+  "cases": [
+    {"fn":"terrainVariantIds","in":"forest","out":["forest/default","forest/dense","forest/dead"]},
+    {"fn":"terrainVariantIds","in":"plains","out":["plains/default","plains/fields"]},
+    {"fn":"terrainVariantIds","in":"mountain","out":["mountain/default","mountain/snowy-range"]},
+    {"fn":"terrainVariantIds","in":"sea","out":["sea/default"]},
+    {"fn":"terrainVariantIds","in":"hills","out":["hills/default","hills/rocky"]},
+    {"fn":"terrainVariantIds","in":"desert","out":["desert/default","desert/cracked","desert/beach"]},
+    {"fn":"terrainVariantIds","in":"swamp","out":["swamp/default","swamp/dead-trees"]},
+    {"fn":"terrainVariantIds","in":"tundra","out":["tundra/default","tundra/cracked-ice"]},
+    {"fn":"terrainVariantIds","in":"lake","out":["lake/default"]},
+    {"fn":"terrainVariantIds","in":"jungle","out":["jungle/default"]},
+    {"fn":"terrainVariantIds","in":"volcano","out":["volcano/default","volcano/caldera"]},
+    {"fn":"terrainVariantIds","in":"default","out":["default/default"]},
+    {"fn":"featureVariantIds","in":"city","out":["city/default","city/town","city/capital","city/walled"]},
+    {"fn":"featureVariantIds","in":"settlement","out":["settlement/default","settlement/tent","settlement/village","settlement/huts"]},
+    {"fn":"featureVariantIds","in":"tower","out":["tower/default","tower/spire","tower/keep","tower/flagged"]},
+    {"fn":"featureVariantIds","in":"ruins","out":["ruins/default","ruins/rubble","ruins/castle","ruins/wall"]},
+    {"fn":"featureVariantIds","in":"dungeon","out":["dungeon/default","dungeon/crypt","dungeon/cave","dungeon/labyrinth"]},
+    {"fn":"featureVariantIds","in":"lookout","out":["lookout/default","lookout/lighthouse","lookout/observatory","lookout/hill-fort"]},
+    {"fn":"featureVariantIds","in":"mine","out":["mine/default","mine/miner","mine/wagon","mine/minerals"]},
+    {"fn":"featureVariantIds","in":"well","out":["well/default","well/fountain","well/cistern"]},
+    {"fn":"featureVariantIds","in":"pit","out":["pit/default","pit/spiked","pit/ladder","pit/excavation"]},
+    {"fn":"featureVariantIds","in":"pyre","out":["pyre/default","pyre/campfire","pyre/brazier","pyre/fire-shrine"]},
+    {"fn":"featureVariantIds","in":"cage","out":["cage/default","cage/birdcage","cage/prisoner","cage/bound"]},
+    {"fn":"featureVariantIds","in":"flag","out":["flag/default","flag/pennant","flag/heraldic","flag/tattered"]}
+  ]
+}

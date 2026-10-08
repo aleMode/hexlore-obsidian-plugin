@@ -1,0 +1,168 @@
+:root {
+  --bg: #1A1A2E;
+  --panel: #26263A;
+  --line: #2A2A4A;
+  --text: #E8E8F0;
+  --accent: #7A55D4;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  overflow: hidden;
+  touch-action: none;
+}
+
+#topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+}
+
+#campaign-name { font-weight: 700; }
+#status { font-size: 12px; color: #9a9ab0; }
+#topbar-right { display: flex; align-items: center; gap: 12px; }
+#stylebtn, #blendbtn {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+#stylebtn:hover, #blendbtn:hover { border-color: var(--accent); }
+
+#map { display: block; width: 100vw; height: 100vh; }
+
+#tooltip {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  max-width: 240px;
+  pointer-events: none;
+  z-index: 20;
+}
+#credits {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: 3px 10px;
+  font-size: 10px;
+  color: #7a7a90;
+  background: rgba(26, 26, 46, 0.75);
+  pointer-events: auto;
+  z-index: 10;
+}
+#credits a { color: #9a9ab0; }
+
+#tooltip h4 { margin: 0 0 4px; font-size: 14px; }
+#tooltip p { margin: 0; color: #c8c8d8; font-size: 12px; }
+
+/* ----- travel votes ------------------------------------------------------ */
+#votepanel {
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  width: 208px;
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(38, 38, 58, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  z-index: 15;
+}
+
+#votepanel h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #b0b0c8;
+}
+
+#votename {
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #1E1E34;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+#votename:focus { outline: none; border-color: var(--accent); }
+
+#votehint { margin: 0; font-size: 11px; color: #8a8aa0; }
+
+#votelist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  /* body sets touch-action:none so the map never scrolls the page; the list
+     has to opt back in or it cannot be flicked on a phone. */
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#votelist li {
+  position: relative;
+  padding: 6px 34px 6px 8px;
+  background: #1E1E34;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+#votelist li.mine { border-color: var(--accent); }
+#votelist li strong { font-size: 13px; font-weight: 600; }
+#votelist li p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #9a9ab0;
+  overflow-wrap: anywhere;
+}
+#votelist li .count {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-width: 20px;
+  padding: 1px 5px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--accent);
+  border-radius: 10px;
+}
+
+/* Phones: the panel would eat the map, so dock it to the bottom edge. */
+@media (max-width: 560px) {
+  #votepanel {
+    top: auto;
+    bottom: 22px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 40vh;
+  }
+}

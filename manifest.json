@@ -1,0 +1,9 @@
+{
+	"id": "hexlore",
+	"name": "HexLore",
+	"version": "0.0.1",
+	"minAppVersion": "1.13.0",
+	"description": "Hex-crawl map builder, viewer and player server for a GM's campaign notes.",
+	"author": "aleMode",
+	"isDesktopOnly": false
+}

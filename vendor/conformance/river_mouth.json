@@ -1,0 +1,6 @@
+{
+  "about": "a course split where it meets water",
+  "cases": [
+    {"fn":"sampleSmoothCourse+splitCourseAtWater","in":{"course":[[0.0,0.0],[72.0,41.569219381653056],[144.0,83.13843876330611],[216.0,124.70765814495917],[288.0,166.27687752661222]],"step":6,"water":"q >= 3 (pixelToAxial)"},"out":{"samples":57,"runs":[{"points":36,"first":[0.0,0.0],"last":[179.99999754769462,103.92304703829348],"shoreAtStart":false,"shoreAtEnd":true}],"mouths":[{"shore":[179.99999754769462,103.92304703829348],"into":[0.8660254037844376,0.5000000000000018]}]}}
+  ]
+}

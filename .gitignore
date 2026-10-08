@@ -1,0 +1,23 @@
+# editors
+.vscode
+.idea
+*.iml
+.DS_Store
+
+# npm
+node_modules
+
+# Build output: uploaded to releases, never committed.
+main.js
+*.map
+
+# Obsidian per-install plugin data
+data.json
+
+# The dev vault holds a real campaign: never committed here. While the
+# plugin lives inside the Flutter repository this is a symlink to
+# ../obsidian-test-vault (no trailing slash, so the link is ignored too).
+test-vault
+
+# Obsidian's state, if the repository root is ever opened as a vault.
+.obsidian/

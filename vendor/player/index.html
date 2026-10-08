@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4, user-scalable=yes" />
+  <title>HexLore — Player Map</title>
+  <link rel="stylesheet" href="/static/player.css" />
+</head>
+<body>
+  <header id="topbar">
+    <span id="campaign-name">HexLore</span>
+    <span id="topbar-right">
+      <button id="stylebtn" type="button" aria-label="Map style">Illustrated</button>
+      <button id="blendbtn" type="button" aria-label="Blend biome borders">Blend: off</button>
+      <span id="status">connecting…</span>
+    </span>
+  </header>
+  <canvas id="map"></canvas>
+  <div id="tooltip" hidden></div>
+  <!-- Travel votes: one standing pick per player for where the party heads
+       next. Session-only — the tally lives in the GM's running server. -->
+  <aside id="votepanel">
+    <h3>Where next?</h3>
+    <input id="votename" type="text" maxlength="24" autocomplete="off"
+           placeholder="Your name" aria-label="Your name" />
+    <p id="votehint">Click a hex to vote for where the party goes next.</p>
+    <ul id="votelist"></ul>
+  </aside>
+  <!-- CC BY 3.0 requires attribution wherever the icons are distributed, and
+       the player view is a distribution. Filled at runtime from the generated
+       credits so it can never fall behind the artwork. -->
+  <footer id="credits"></footer>
+  <!-- render_spec.js and feature_glyphs.js must load first: player.js reads
+       their globals at module scope. -->
+  <script src="/static/render_spec.js"></script>
+  <script src="/static/feature_glyphs.js"></script>
+  <script src="/static/terrain_glyphs.js"></script>
+  <!-- Illustrated style: generated tables, then the pure spec that reads them. -->
+  <script src="/static/texture_tables.js"></script>
+  <script src="/static/texture_spec.js"></script>
+  <script src="/static/player.js"></script>
+</body>
+</html>

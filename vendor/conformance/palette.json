@@ -1,0 +1,33 @@
+{
+  "about": "render spec hashes and fill jitter (decision 13, 15)",
+  "cases": [
+    {"fn":"hash2","in":[0,0,0],"out":3370484223},
+    {"fn":"hash2","in":[0,0,7],"out":3320151366},
+    {"fn":"hash2","in":[1,0,0],"out":2812068108},
+    {"fn":"hash2","in":[1,0,7],"out":2795290489},
+    {"fn":"hash2","in":[0,1,0],"out":2185116220},
+    {"fn":"hash2","in":[0,1,7],"out":2168338601},
+    {"fn":"hash2","in":[-1,0,0],"out":3130985171},
+    {"fn":"hash2","in":[-1,0,7],"out":3214873266},
+    {"fn":"hash2","in":[3,-2,0],"out":3549856841},
+    {"fn":"hash2","in":[3,-2,7],"out":3566634460},
+    {"fn":"hash2","in":[-4,7,0],"out":2138315535},
+    {"fn":"hash2","in":[-4,7,7],"out":2087982678},
+    {"fn":"hash2","in":[17,-9,0],"out":1569015272},
+    {"fn":"hash2","in":[17,-9,7],"out":1686458605},
+    {"fn":"hash2","in":[-16,8,0],"out":2106856874},
+    {"fn":"hash2","in":[-16,8,7],"out":2022968779},
+    {"fn":"jitterFill","in":["#30472E",0,0],"out":"#3A5038"},
+    {"fn":"jitterFill","in":["#30472E",1,0],"out":"#334931"},
+    {"fn":"jitterFill","in":["#30472E",0,1],"out":"#2F452D"},
+    {"fn":"jitterFill","in":["#C3CE8E",0,0],"out":"#C6D093"},
+    {"fn":"jitterFill","in":["#C3CE8E",1,0],"out":"#C4CF90"},
+    {"fn":"jitterFill","in":["#C3CE8E",0,1],"out":"#BDC88A"},
+    {"fn":"jitterFill","in":["#2F5F70",0,0],"out":"#396777"},
+    {"fn":"jitterFill","in":["#2F5F70",1,0],"out":"#326172"},
+    {"fn":"jitterFill","in":["#2F5F70",0,1],"out":"#2E5C6D"},
+    {"fn":"jitterFill","in":["#E0C48F",0,0],"out":"#E1C794"},
+    {"fn":"jitterFill","in":["#E0C48F",1,0],"out":"#E0C591"},
+    {"fn":"jitterFill","in":["#E0C48F",0,1],"out":"#D9BE8B"}
+  ]
+}
