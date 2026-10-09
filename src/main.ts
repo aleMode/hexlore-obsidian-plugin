@@ -1,4 +1,5 @@
 import { MarkdownView, Notice, Plugin, TFile, type SettingDefinitionItem, type WorkspaceLeaf } from 'obsidian';
+import { exportToFlutter } from './convert/export_command';
 import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings, type SettingsHost } from './settings';
 import { StoreRegistry } from './storage/store_registry';
@@ -28,6 +29,7 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				toggle: () => this.togglePanel(),
 				sections: () => this.toggleSections(),
 				votes: (file) => this.players.voteCounts(file),
+				exportFlutter: (file) => void exportToFlutter(this.app, this.stores, file),
 			}));
 		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
@@ -70,6 +72,16 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				const url = this.players.url;
 				if (!url) return false;
 				if (!checking) void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`));
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'export-to-flutter',
+			name: 'Export this map as a campaign folder…',
+			checkCallback: (checking) => {
+				const file = this.activeMapFile();
+				if (!file) return false;
+				if (!checking) void exportToFlutter(this.app, this.stores, file);
 				return true;
 			},
 		});

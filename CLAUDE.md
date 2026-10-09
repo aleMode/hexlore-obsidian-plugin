@@ -141,6 +141,19 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   that guard), status-bar link, vote badges on the GM map, "Player view"
   in the map panel. `/api/art` (the registry as data) is NOT done: it needs
   `player.js` to take its tables from the server, a Flutter-side change.
+- `src/convert/` — "Export as a campaign folder…" (item 2.7), following
+  `vendor/docs/converter.md` §5 (the contract BOTH converters follow;
+  Flutter's is `hexlore_flutter/lib/convert/`). `flutter_export.ts` is the
+  pure planner (map copy with `page_file` / `also_links`, notes placed by
+  SECTION, NPC/quest notes → records, links rewritten to Flutter names,
+  `roundtrip.json` with FNV-1a fingerprints); `write.ts` writes with Node
+  `fs` outside the vault and sweeps stale files from the folders it owns;
+  `export_command.ts` gathers notes through Obsidian (§5.1). Fixtures:
+  `vendor/converter/` — `test/convert.test.ts` exports
+  `flutter_to_plugin/expected` and compares with `plugin_to_flutter/
+  expected` (`HEXLORE_WRITE_CONVERTER=1` writes it into the Flutter repo,
+  then `npm run vendor`); Flutter's `converter_roundtrip_test.dart` checks
+  the trip back. `src/notes/npc_page.ts` ports Flutter's NPC page sections.
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane

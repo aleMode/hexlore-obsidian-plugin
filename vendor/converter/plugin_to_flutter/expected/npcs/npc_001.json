@@ -1,0 +1,20 @@
+{
+  "id": "npc_001",
+  "name": "Hermit",
+  "hex_id": "q0_r0",
+  "role": "sage",
+  "attitude": "friendly",
+  "description": "Old and kind.",
+  "secret": "Leads the cult.",
+  "tags": [
+    "cult"
+  ],
+  "linked_npc_ids": [
+    "npc_002"
+  ],
+  "linked_quest_ids": [
+    "quest_001"
+  ],
+  "notes_file": "npc/Hermit.md",
+  "is_secret": false
+}

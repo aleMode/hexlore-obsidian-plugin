@@ -1,0 +1,12 @@
+{
+  "tabs": [
+    {"name":"NPC","fixed":true,"mode":"global"},
+    {"name":"Unsorted","fixed":true,"mode":"global"},
+    {"name":"Factions","fixed":false,"mode":"global"}
+  ],
+  "entries": {
+    "entry_001": {"id":"entry_001","name":"Ash Cult","tab":"Factions","npc_id":null,"page_file":"factions/Ash Cult.md"},
+    "entry_002": {"id":"entry_002","name":"Loose","tab":"Unsorted","npc_id":null,"page_file":"unsorted/Loose.md"},
+    "entry_003": {"id":"entry_003","name":"Hermit","tab":"NPC","npc_id":"npc_001","page_file":"npc/Hermit.md"}
+  }
+}

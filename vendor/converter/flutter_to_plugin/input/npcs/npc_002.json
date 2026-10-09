@@ -1,0 +1,15 @@
+{
+  "id": "npc_002",
+  "name": "Wanderer",
+  "hex_id": "q3_r3",
+  "role": "",
+  "attitude": "",
+  "description": "",
+  "secret": "",
+  "tags": [],
+  "linked_npc_ids": [],
+  "linked_quest_ids": [],
+  "notes_file": null,
+  "is_secret": true,
+  "mood": "grim"
+}

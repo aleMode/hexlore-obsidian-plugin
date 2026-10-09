@@ -216,6 +216,8 @@ export class MapView extends ItemView {
 			sections: () => Promise<void>;
 			/** Live player votes on this map: hex id → count. */
 			votes: (file: TFile | null) => Map<string, number>;
+			/** "Export to the HexLore app…" (item 2.7). */
+			exportFlutter: (file: TFile) => void;
 		},
 	) {
 		super(leaf);
@@ -367,6 +369,13 @@ export class MapView extends ItemView {
 		const ro = !this.editor || this.editor.readOnly;
 		menu.addItem((i) => i.setTitle('Resize grid…').setIcon('scaling').setDisabled(ro).onClick(() => this.resizeDialog()));
 		menu.addItem((i) => i.setTitle('Explode map…').setIcon('expand').setDisabled(ro).onClick(() => this.explodeDialog()));
+		menu.addItem((i) =>
+			i
+				.setTitle('Export as a campaign folder…')
+				.setIcon('folder-output')
+				.setDisabled(!this.file || !Platform.isDesktopApp)
+				.onClick(() => this.file && void this.panel.exportFlutter(this.file)),
+		);
 		menu.addItem((i) => i.setTitle('Art credits').setIcon('info').onClick(() => new CreditsModal(this.app).open()));
 		menu.addItem((i) =>
 			i

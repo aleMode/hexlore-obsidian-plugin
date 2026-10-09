@@ -1,0 +1,22 @@
+{
+  "id": "quest_001",
+  "title": "Find the relic",
+  "hex_id": "q0_r0",
+  "hook": "A map fragment.",
+  "objectives": [
+    "Reach the tower",
+    "Open the vault"
+  ],
+  "reward": "100 gp",
+  "status": "active",
+  "gm_notes": "Ask at [[Base Culto]].",
+  "linked_hex_ids": [
+    "q2_r1"
+  ],
+  "linked_npc_ids": [
+    "npc_001"
+  ],
+  "tags": [],
+  "unresolved": false,
+  "is_secret": false
+}

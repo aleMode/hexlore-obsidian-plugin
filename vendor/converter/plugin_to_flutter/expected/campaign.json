@@ -1,0 +1,10 @@
+{
+  "format": 2,
+  "name": "Fixture",
+  "grid_cols": 12,
+  "grid_rows": 12,
+  "grid_min_q": 0,
+  "grid_r_shift": 0,
+  "hex_distance": 6.0,
+  "distance_unit": "mi"
+}

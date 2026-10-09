@@ -574,3 +574,9 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* --- Item 2.7: export to the HexLore app ----------------------------------------- */
+.hexlore-wide-input {
+	width: 100%;
+	min-width: 22em;
+}

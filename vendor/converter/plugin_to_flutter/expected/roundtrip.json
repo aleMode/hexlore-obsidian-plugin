@@ -1,0 +1,20 @@
+{
+  "converter": 1,
+  "vault_index": "Fixture.hexmap.md",
+  "files": [
+    {"flutter":"adventures/adv_001.md","vault":"Adventures/Act One.md","fingerprint":"e0db31ba"},
+    {"flutter":"npcs/npc_001.json","vault":"NPCs/Hermit.md","fingerprint":"3bb9329a"},
+    {"flutter":"npcs/npc_002.json","vault":"NPCs/Wanderer.md","fingerprint":"dd2a4671"},
+    {"flutter":"pages/factions/Ash Cult.md","vault":"Factions/Ash Cult.md","fingerprint":"abc41490"},
+    {"flutter":"pages/hexes/Base Culto.md","vault":"Places/Base Culto.md","fingerprint":"8d8f6afc"},
+    {"flutter":"pages/hexes/Fixture B1.md","vault":"Places/Fixture B1.md","fingerprint":"93864ebe"},
+    {"flutter":"pages/hexes/Fixture D4.md","vault":"Places/Fixture D4.md","fingerprint":"1c37b5c3"},
+    {"flutter":"pages/hexes/Tower.md","vault":"Places/Tower.md","fingerprint":"6a4292f0"},
+    {"flutter":"pages/npc/Hermit.md","vault":"NPCs/Hermit.md","fingerprint":"3bb9329a"},
+    {"flutter":"pages/npc/Wanderer.md","vault":"NPCs/Wanderer.md","fingerprint":"dd2a4671"},
+    {"flutter":"pages/prep/Todo.md","vault":"GM notes/Todo.md","fingerprint":"d396b748"},
+    {"flutter":"pages/regions/North.md","vault":"Regions/North.md","fingerprint":"9f673212"},
+    {"flutter":"pages/unsorted/Loose.md","vault":"Unsorted/Loose.md","fingerprint":"88d1632b"},
+    {"flutter":"quests/quest_001.json","vault":"Quests/Find the relic.md","fingerprint":"3b441791"}
+  ]
+}

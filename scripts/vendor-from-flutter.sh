@@ -23,7 +23,8 @@ app="$src/hexlore_flutter"
 
 [ -f "$app/pubspec.yaml" ] || { echo "not a HexLore Flutter repo: $src" >&2; exit 1; }
 
-paths="hexlore_flutter/test/fixtures/conformance docs/format-2.md \
+paths="hexlore_flutter/test/fixtures/conformance docs/format-2.md docs/converter.md \
+hexlore_flutter/test/fixtures/converter \
 hexlore_flutter/assets/player hexlore_flutter/tool/variant_ids.lock"
 
 # Vendoring uncommitted files would record a commit they are not in.
@@ -41,7 +42,8 @@ rm -rf "$out"
 mkdir -p "$out/conformance" "$out/docs" "$out/player"
 
 cp "$app"/test/fixtures/conformance/*.json "$app"/test/fixtures/conformance/README.md "$out/conformance/"
-cp "$src/docs/format-2.md" "$out/docs/"
+cp "$src/docs/format-2.md" "$src/docs/converter.md" "$out/docs/"
+cp -R "$app/test/fixtures/converter" "$out/converter"
 cp "$app"/assets/player/* "$out/player/"
 cp "$app/tool/variant_ids.lock" "$out/"
 

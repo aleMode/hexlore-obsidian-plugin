@@ -1,0 +1,6 @@
+[
+  {"q":0,"r":0,"name":"Base Culto","terrain":"forest","page_file":"hexes/Base Culto.md"},
+  {"q":1,"r":0,"terrain":"hills","page_file":"hexes/Fixture B1.md"},
+  {"q":2,"r":1,"name":"Tower","terrain":"mountain","page_file":"hexes/Tower.md"},
+  {"q":3,"r":3,"terrain":"plains","page_file":"hexes/Fixture D4.md"}
+]
