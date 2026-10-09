@@ -3,12 +3,15 @@
 // Eight exclusive tools with shortcuts 1–8 (decision 6; the ruler is 8,
 // decision 18). The paint palette is the PaintPick chooser (decision 1c):
 // biomes, features, their variants and the two erasers, all derived from the
-// art registry — a new biome or variant appears here for free.
+// art registry — a new biome or variant appears here for free. Every choice
+// is a named tile with a preview drawn by the renderer (pick_preview.ts):
+// colour alone does not say which biome is which.
 
 import { setIcon, setTooltip } from 'obsidian';
-import { terrainColors, type Feature, type Terrain } from '../core/hex_data';
+import type { Feature, Terrain } from '../core/hex_data';
 import { PaintPick } from '../core/hex_paint';
 import { ART } from '../render/art';
+import { pickPreview, titleCase, type PreviewOf } from './pick_preview';
 
 export type ToolId = 'select' | 'paint' | 'river' | 'thread' | 'region' | 'route' | 'fog' | 'ruler';
 
@@ -68,17 +71,6 @@ export function pickFromStored(s: Partial<StoredPick> | null | undefined): Paint
 	} catch {
 		return PaintPick.biome('forest');
 	}
-}
-
-/** A feature's glyph as a small SVG. */
-function glyphIcon(parent: HTMLElement, feature: Feature, variant: number): void {
-	const art = ART.featureGlyph(feature, variant);
-	if (!art) return;
-	const g = art.glyph;
-	const svg = parent.createSvg('svg', {
-		attr: { viewBox: `${g.left} ${g.top} ${g.right - g.left} ${g.bottom - g.top}`, width: '20', height: '20' },
-	});
-	svg.createSvg('path', { attr: { d: g.path, fill: 'currentColor' } });
 }
 
 export interface ToolbarHost {
@@ -190,12 +182,8 @@ export class Toolbar {
 	private renderSwatch(): void {
 		const p = this.host.pick();
 		this.swatch.empty();
-		const chip = this.swatch.createDiv({ cls: 'hexlore-chip' });
-		if (p.terrain && p.terrain !== 'default') chip.style.setProperty('--chip', terrainColors[p.terrain]);
-		else chip.addClass('is-empty');
-		if (p.feature) glyphIcon(chip, p.feature, p.featureVariant);
-		else if (p.clearsFeature) setIcon(chip, 'eraser');
-		else if (p.terrain === 'default') setIcon(chip, 'eraser');
+		if (p.terrain === 'default' || (p.clearsFeature && !p.feature && !p.terrain)) setIcon(this.swatch.createDiv({ cls: 'hexlore-chip is-empty' }), 'eraser');
+		else pickPreview(this.swatch, p, 26);
 		setTooltip(this.swatch, `Painting: ${p.describe()}`, { placement: 'right' });
 	}
 
@@ -223,49 +211,46 @@ export class Toolbar {
 			this.host.setPick(p);
 			this.renderPalette();
 		};
+		const section = (title: string) => {
+			pal.createDiv({ cls: 'hexlore-palette-title', text: title });
+			return pal.createDiv({ cls: 'hexlore-palette-grid' });
+		};
+		/** A named tile: a preview (or an icon) over its label. */
+		const tile = (grid: HTMLElement, label: string, active: boolean, pick: () => PaintPick, preview: PreviewOf | string) => {
+			const t = grid.createDiv({ cls: 'hexlore-palette-item' });
+			t.toggleClass('is-active', active);
+			if (typeof preview === 'string') setIcon(t.createDiv({ cls: 'hexlore-palette-icon' }), preview);
+			else pickPreview(t, preview, 36);
+			t.createDiv({ cls: 'hexlore-palette-label', text: label });
+			setTooltip(t, label);
+			t.addEventListener('click', () => choose(pick()));
+		};
 
-		pal.createDiv({ cls: 'hexlore-palette-title', text: 'Biomes' });
-		const biomes = pal.createDiv({ cls: 'hexlore-palette-grid' });
+		const biomes = section('Biomes');
 		for (const b of ART.allBiomes()) {
 			if (b.terrain === 'default') continue;
-			const cell = biomes.createDiv({ cls: 'hexlore-palette-item' });
-			cell.style.setProperty('--chip', terrainColors[b.terrain]);
-			cell.toggleClass('is-active', current.terrain === b.terrain && !current.feature && !current.clearsFeature);
-			setTooltip(cell, b.terrain[0]!.toUpperCase() + b.terrain.slice(1));
-			cell.addEventListener('click', () => choose(PaintPick.biome(b.terrain)));
+			tile(biomes, titleCase(b.terrain), current.terrain === b.terrain && !current.feature, () => PaintPick.biome(b.terrain), { terrain: b.terrain });
 		}
-		pal.createDiv({ cls: 'hexlore-palette-title', text: 'Features' });
-		const features = pal.createDiv({ cls: 'hexlore-palette-grid' });
+		const features = section('Icons');
 		for (const f of ART.allFeatures()) {
-			const cell = features.createDiv({ cls: 'hexlore-palette-item is-feature' });
-			glyphIcon(cell, f.feature, 0);
-			cell.toggleClass('is-active', current.feature === f.feature);
-			setTooltip(cell, f.feature[0]!.toUpperCase() + f.feature.slice(1));
-			cell.addEventListener('click', () => choose(PaintPick.featureOnly(f.feature)));
+			tile(features, titleCase(f.feature), current.feature === f.feature, () => PaintPick.featureOnly(f.feature), { feature: f.feature });
 		}
 
-		// Variants of what is picked.
-		const variants = current.feature
-			? ART.feature(current.feature)?.variants
-			: current.terrain && current.terrain !== 'default'
-				? ART.biome(current.terrain)?.variants
-				: undefined;
-		if (variants && variants.length > 1) {
-			pal.createDiv({ cls: 'hexlore-palette-title', text: 'Variant' });
-			const row = pal.createDiv({ cls: 'hexlore-palette-variants' });
-			variants.forEach((v, i) => {
-				const active = current.feature ? current.featureVariant === i : current.terrainVariant === i;
-				const b = row.createEl('button', { text: v.label, cls: active ? 'mod-cta' : '' });
-				b.addEventListener('click', () =>
-					choose(current.feature ? PaintPick.featureOnly(current.feature, i) : PaintPick.biome(current.terrain!, i)),
-				);
+		// The variants of what is picked, each drawn.
+		const { feature, terrain } = current;
+		const art = feature ? ART.feature(feature) : terrain && terrain !== 'default' ? ART.biome(terrain) : undefined;
+		if (art && art.variants.length > 1) {
+			const grid = section(`${titleCase(feature ?? terrain!)} variants`);
+			art.variants.forEach((v, i) => {
+				if (feature) tile(grid, v.label, current.featureVariant === i, () => PaintPick.featureOnly(feature, i), { feature, featureVariant: i });
+				else tile(grid, v.label, current.terrainVariant === i, () => PaintPick.biome(terrain!, i), { terrain, terrainVariant: i });
 			});
 		}
 
-		const erase = pal.createDiv({ cls: 'hexlore-palette-variants' });
-		const et = erase.createEl('button', { text: 'Erase terrain', cls: current.terrain === 'default' ? 'mod-cta' : '' });
-		et.addEventListener('click', () => choose(PaintPick.biome('default')));
-		const ef = erase.createEl('button', { text: 'Erase icon', cls: current.clearsFeature ? 'mod-cta' : '' });
-		ef.addEventListener('click', () => choose(PaintPick.featureEraser()));
+		pal.createDiv({ cls: 'hexlore-palette-divider' });
+		const erase = section('Erase');
+		erase.addClass('is-erase');
+		tile(erase, 'Biome', terrain === 'default', () => PaintPick.biome('default'), 'eraser');
+		tile(erase, 'Icon', current.clearsFeature && !feature, () => PaintPick.featureEraser(), 'eraser');
 	}
 }

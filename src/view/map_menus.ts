@@ -5,6 +5,7 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, normalizePath, type App } from 'obsidian';
 import { CampaignMeta } from '../core/campaign_meta';
 import { MapScale, type DistanceUnit } from '../core/map_scale';
+import { RIVER_WIDTH_MAX, RIVER_WIDTH_MIN } from '../core/river';
 import { rankEntries, type JumpEntry } from '../core/quick_jump';
 import { encodeJsonLines } from '../core/json';
 import { safeNoteName } from '../notes/note_meta';
@@ -202,6 +203,52 @@ export class ScaleModal extends Modal {
 	}
 
 	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+// ----- river width -------------------------------------------------------------------
+
+/** The river menu's width presets (River.width: 1 = the default stroke). */
+export const RIVER_WIDTH_PRESETS: readonly [label: string, width: number][] = [
+	['Stream', 0.5],
+	['River', 1],
+	['Wide river', 1.75],
+	['Great river', 3],
+];
+
+/** Flutter's river width editor: − value +, 0.1 steps, applied live; one
+ *  undo step for the whole session (sealed when it closes). */
+export class RiverWidthModal extends Modal {
+	constructor(
+		app: App,
+		private readonly width: () => number | null,
+		private readonly apply: (w: number) => void,
+		private readonly done: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.setTitle('River width');
+		const row = new Setting(this.contentEl).setName('Width').setDesc(`From ${RIVER_WIDTH_MIN} to ${RIVER_WIDTH_MAX}; 1 is a normal river.`);
+		let value: HTMLElement;
+		const show = () => value.setText((this.width() ?? 1).toFixed(1));
+		const step = (d: number) => {
+			const w = this.width();
+			if (w === null) return this.close();
+			this.apply(Math.min(RIVER_WIDTH_MAX, Math.max(RIVER_WIDTH_MIN, Math.round((w + d) * 10) / 10)));
+			show();
+		};
+		row.addExtraButton((b) => b.setIcon('minus').setTooltip('Narrower').onClick(() => step(-0.1)));
+		value = row.controlEl.createSpan({ cls: 'hexlore-river-width' });
+		row.addExtraButton((b) => b.setIcon('plus').setTooltip('Wider').onClick(() => step(0.1)));
+		show();
+		new Setting(this.contentEl).addButton((b) => b.setButtonText('Done').setCta().onClick(() => this.close()));
+	}
+
+	onClose(): void {
+		this.done();
 		this.contentEl.empty();
 	}
 }

@@ -34,6 +34,7 @@ export const SKETCH_TOOLS: readonly { id: SketchTool; icon: string; key: string;
 /** How the hex view shows the sketch: not at all, everything translucent,
  *  or labels only at full strength. */
 export type SketchOverlay = 'none' | 'full' | 'labels';
+export type SketchOverlayMode = Exclude<SketchOverlay, 'none'>;
 
 export const SKETCH_MIN_WIDTH = 1;
 export const SKETCH_MAX_WIDTH = 48;
@@ -53,7 +54,10 @@ export interface SketchPrefs {
 	filled: boolean;
 	showGhost: boolean;
 	showLattice: boolean;
+	/** What the hex view draws of the sketch ('none' = hidden)… */
 	overlay: SketchOverlay;
+	/** …and what showing it again brings back. */
+	overlayMode: SketchOverlayMode;
 }
 
 export interface SketchHost {
@@ -117,6 +121,7 @@ export class SketchMode {
 			showGhost: stored.showGhost !== false,
 			showLattice: stored.showLattice !== false,
 			overlay: stored.overlay === 'full' || stored.overlay === 'labels' ? stored.overlay : 'none',
+			overlayMode: stored.overlayMode === 'labels' || (!stored.overlayMode && stored.overlay === 'labels') ? 'labels' : 'full',
 		};
 		this.cnv = host.stage.createEl('canvas', { cls: 'hexlore-sketch-canvas' });
 		// Low-latency ink where the platform offers it.
@@ -142,6 +147,11 @@ export class SketchMode {
 		this.applyVisibility();
 		this.schedule();
 		this.host.changed();
+	}
+
+	/** Show or hide the sketch over the hex view; the mode is kept while hidden. */
+	showOverlay(shown: boolean, mode = this.prefs.overlayMode): void {
+		this.setPrefs({ overlayMode: mode, overlay: shown ? mode : 'none' });
 	}
 
 	setActive(on: boolean): void {

@@ -1,8 +1,10 @@
 // The plugin's settings: what belongs to the VAULT (synced in data.json).
 // Per-device choices (camera, map style, panel state) are in local storage;
-// per-campaign ones (sections, overlays) in the map's index.
+// per-campaign ones (sections, overlays) in the map's index. Serving on the
+// local network is stored here but switched from the players menu, where it
+// is needed: one place per setting.
 
-import { PluginSettingTab, type App, type Plugin, type SettingDefinitionItem } from 'obsidian';
+import { PluginSettingTab, type SettingDefinitionItem } from 'obsidian';
 
 export interface HexLoreSettings {
 	/** Where note templates are looked for (the "New note" dialog lists them). */
@@ -26,23 +28,7 @@ export function readSettings(raw: unknown): HexLoreSettings & Record<string, unk
 	};
 }
 
-export interface SettingsHost extends Plugin {
-	settings: HexLoreSettings;
-	saveSettings(): Promise<void>;
-	/** Setting groups other modules add (the player server). */
-	settingGroups: (() => SettingDefinitionItem[])[];
-	/** A setting was changed from the tab (after it was saved). */
-	settingChanged(key: string): void;
-}
-
 export class HexLoreSettingTab extends PluginSettingTab {
-	constructor(
-		app: App,
-		private readonly host: SettingsHost,
-	) {
-		super(app, host);
-	}
-
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{
@@ -56,12 +42,6 @@ export class HexLoreSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			...this.host.settingGroups.flatMap((g) => g()),
 		];
-	}
-
-	async setControlValue(key: string, value: unknown): Promise<void> {
-		await super.setControlValue(key, value);
-		this.host.settingChanged(key);
 	}
 }

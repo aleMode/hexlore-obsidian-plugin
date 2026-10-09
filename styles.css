@@ -142,8 +142,10 @@
 	position: absolute;
 	left: calc(100% + var(--size-4-2));
 	top: 0;
-	width: 236px;
-	padding: var(--size-4-2);
+	width: 332px;
+	max-height: calc(100vh - 160px);
+	overflow-y: auto;
+	padding: var(--size-4-2) var(--size-4-3) var(--size-4-3);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
@@ -152,44 +154,89 @@
 }
 
 .hexlore-palette-title {
-	font-size: var(--font-ui-smaller);
+	margin: var(--size-4-2) 0 var(--size-2-2);
 	color: var(--text-muted);
-	margin: var(--size-4-1) 0;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.hexlore-palette-divider {
+	height: var(--border-width);
+	margin: var(--size-4-3) 0 var(--size-2-2);
+	background: var(--background-modifier-border);
 }
 
 .hexlore-palette-grid {
 	display: grid;
-	grid-template-columns: repeat(6, 1fr);
-	gap: 4px;
+	grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+	gap: var(--size-2-2);
 }
 
+/* A tile: the preview over its name. */
 .hexlore-palette-item {
-	height: 30px;
-	border-radius: var(--radius-s);
-	background: var(--chip, var(--background-secondary));
-	border: 2px solid transparent;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	cursor: pointer;
+	gap: 2px;
+	padding: var(--size-2-2) 2px var(--size-2-1);
+	border: 2px solid transparent;
+	border-radius: var(--radius-s);
+	cursor: var(--cursor);
 	color: var(--text-normal);
+}
+
+.hexlore-palette-item:hover {
+	background: var(--background-modifier-hover);
 }
 
 .hexlore-palette-item.is-active {
 	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
 }
 
-.hexlore-palette-variants {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px;
-	margin-top: var(--size-4-1);
-}
-
-.hexlore-palette-variants button {
+.hexlore-palette-label {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	font-size: var(--font-ui-smaller);
-	padding: 2px 8px;
-	height: auto;
+}
+
+.hexlore-palette-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	color: var(--text-muted);
+}
+
+.hexlore-palette-grid.is-erase {
+	grid-template-columns: 1fr 1fr;
+}
+
+.hexlore-palette-grid.is-erase .hexlore-palette-item {
+	flex-direction: row;
+	justify-content: center;
+	gap: var(--size-2-3);
+	border-style: dashed;
+	border-color: var(--background-modifier-border);
+}
+
+.hexlore-palette-grid.is-erase .hexlore-palette-item.is-active {
+	border-style: solid;
+	border-color: var(--interactive-accent);
+}
+
+.hexlore-palette-grid.is-erase .hexlore-palette-icon {
+	width: auto;
+	height: 24px;
+}
+
+.hexlore-pick-preview {
+	display: block;
 }
 
 .hexlore-map-stage:focus {
@@ -353,42 +400,6 @@
 .hexlore-panel-thread {
 	border-left: 4px solid var(--thread);
 	padding-left: var(--size-4-2);
-}
-
-.hexlore-panel-display {
-	margin-top: var(--size-4-4);
-	border-top: 1px solid var(--background-modifier-border);
-	padding-top: var(--size-4-2);
-}
-
-.hexlore-panel-display > summary {
-	cursor: pointer;
-	color: var(--text-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	font-size: var(--font-ui-smaller);
-}
-
-.hexlore-panel-subtitle {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	margin-top: var(--size-4-3);
-}
-
-.hexlore-panel .setting-item.hexlore-sub-row {
-	flex-direction: row;
-	align-items: center;
-	padding-left: var(--size-4-4);
-}
-
-.hexlore-sub-row .setting-item-name {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-}
-
-.hexlore-sub-row.is-dimmed {
-	opacity: 0.5;
 }
 
 .hexlore-warning {
@@ -874,7 +885,7 @@
 	color: var(--interactive-accent);
 }
 
-.hexlore-topbar-switch {
+.hexlore-segments {
 	display: flex;
 	padding: 2px;
 	border-radius: var(--radius-m);
@@ -882,7 +893,7 @@
 	border: var(--border-width) solid var(--background-modifier-border);
 }
 
-.hexlore-topbar-segment {
+.hexlore-segment {
 	padding: 2px var(--size-4-3);
 	border-radius: var(--radius-s);
 	font-size: var(--font-ui-small);
@@ -890,16 +901,16 @@
 	cursor: var(--cursor);
 }
 
-.hexlore-topbar-segment:hover {
+.hexlore-segment:hover {
 	color: var(--text-normal);
 }
 
-.hexlore-topbar-segment.is-active {
+.hexlore-segment.is-active {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 }
 
-.hexlore-topbar-segment.is-disabled {
+.hexlore-segment.is-disabled {
 	opacity: 0.4;
 	pointer-events: none;
 }
@@ -940,4 +951,137 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	min-height: 2.5em;
+}
+
+/* The Display & overlays panel (display_panel.ts), under its top-bar button. */
+
+.hexlore-display-panel {
+	--hexlore-gutter: 28px;
+	position: absolute;
+	top: calc(var(--hexlore-topbar-h) + var(--size-2-2));
+	right: var(--hexlore-panel-right, var(--size-4-2));
+	z-index: var(--layer-popover);
+	width: 320px;
+	max-width: calc(100% - 2 * var(--size-4-2));
+	max-height: calc(100% - var(--hexlore-topbar-h) - 2 * var(--size-4-2));
+	overflow-y: auto;
+	padding: var(--size-2-3) 0;
+	background: var(--background-primary);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+	user-select: none;
+}
+
+.hexlore-display-heading {
+	padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.hexlore-display-divider {
+	height: var(--border-width);
+	margin: var(--size-2-3) 0;
+	background: var(--background-modifier-border);
+}
+
+.hexlore-display-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	min-height: 32px;
+	padding: 0 var(--size-4-3);
+}
+
+.hexlore-display-overlays .hexlore-display-row {
+	padding-left: calc(var(--size-2-2) + var(--hexlore-gutter));
+}
+
+.hexlore-display-overlays .hexlore-display-row.is-section {
+	padding-left: var(--size-2-2);
+}
+
+.hexlore-display-overlays .hexlore-display-row.is-sub {
+	padding-left: calc(var(--size-2-2) + 2 * var(--hexlore-gutter));
+}
+
+.hexlore-display-row.is-dimmed {
+	opacity: 0.45;
+}
+
+.hexlore-display-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hexlore-display-label.is-bold {
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-display-row.is-off .hexlore-display-label {
+	color: var(--text-faint);
+}
+
+.hexlore-display-count {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.hexlore-display-icon {
+	width: var(--hexlore-gutter);
+	justify-content: center;
+	padding: var(--size-2-1);
+}
+
+.hexlore-display-icon.is-disabled {
+	opacity: 0.35;
+	pointer-events: none;
+}
+
+.hexlore-display-chip {
+	padding: 1px var(--size-4-2);
+	border-radius: var(--radius-l);
+	border: var(--border-width) solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: var(--cursor);
+}
+
+.hexlore-display-chip.is-active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.hexlore-display-row input[type='range'] {
+	width: 140px;
+}
+
+/* The player view's "now running" instructions (server/started_modal.ts). */
+
+.hexlore-players-link .setting-item-description {
+	font-family: var(--font-monospace);
+	user-select: text;
+}
+
+.hexlore-players-steps {
+	padding-left: var(--size-4-6);
+	color: var(--text-muted);
+}
+
+.hexlore-players-steps li {
+	margin-bottom: var(--size-4-2);
+}
+
+.hexlore-river-width {
+	min-width: 3ch;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
 }

@@ -4,7 +4,8 @@
 // ported player_filter over the map's LIVE model (what the GM sees, saved or
 // about to be), so a reveal reaches players on their next poll.
 
-import { Notice, Platform, TFile, type App, type SettingDefinitionItem } from 'obsidian';
+import { Notice, TFile, type App } from 'obsidian';
+import { nodeModule } from '../desktop';
 import { FORMAT_VERSION } from '../core/campaign_meta';
 import { encodeCompact } from '../core/json';
 import { filterCampaignForPlayer } from '../core/player_filter';
@@ -14,6 +15,7 @@ import type { StoreRegistry } from '../storage/store_registry';
 import { dataFolderOf } from '../view/map_view';
 import { PLAYER_ASSETS } from './assets';
 import { PlayerServer, ServeRefused, textTag, type PlayerPayload } from './player_server';
+import { announcePlayerView } from './started_modal';
 
 /** Broadcast when the served map, the server's state or the votes change. */
 export const PLAYERS_EVENT = 'hexlore:players';
@@ -74,40 +76,39 @@ export class PlayerControl {
 		this.renderStatus();
 	}
 
-	/** Serve [file]'s map (stopping any other). */
+	/** Serve [file]'s map (stopping any other). Never throws: a failure is
+	 *  told to the GM, not left in a promise nobody awaits. */
 	async start(file: TFile): Promise<void> {
-		if (!Platform.isDesktopApp) {
+		const http = await nodeModule('http');
+		if (!http) {
 			new Notice('The player view needs Obsidian on a computer: phones and tablets cannot run a server.');
 			return;
 		}
-		await this.stop(false);
-		const dir = dataFolderOf(this.app, file);
-		const store = await this.stores.acquire(dir, file.basename.replace(/\.hexmap$/, ''));
-		this.store = store;
-		this.dir = dir;
-		this.file = file;
-		// Any edit or reload may change what players see.
-		const bump = () => this.revision++;
-		this.unsub.push(store.on((e) => e.kind === 'reloaded' && bump()));
-		this.unsub.push(editorFor(store).on((e) => e.kind !== 'history' && e.kind !== 'links' && bump()));
-		// Node's http, loaded only now and only on desktop (checked above).
-		let http: typeof import('http') | null = null;
-		if (Platform.isDesktop && Platform.isDesktopApp) http = await import('http');
-		if (!http) return;
-		const server = new PlayerServer({
-			http,
-			assets: PLAYER_ASSETS,
-			payload: () => this.payload(),
-			onVotesChanged: () => this.changed(),
-		});
 		try {
+			await this.stop(false);
+			const dir = dataFolderOf(this.app, file);
+			const store = await this.stores.acquire(dir, file.basename.replace(/\.hexmap$/, ''));
+			this.store = store;
+			this.dir = dir;
+			this.file = file;
+			// Any edit or reload may change what players see.
+			const bump = () => this.revision++;
+			this.unsub.push(store.on((e) => e.kind === 'reloaded' && bump()));
+			this.unsub.push(editorFor(store).on((e) => e.kind !== 'history' && e.kind !== 'links' && bump()));
+			const server = new PlayerServer({
+				http,
+				assets: PLAYER_ASSETS,
+				payload: () => this.payload(),
+				onVotesChanged: () => this.changed(),
+			});
 			const lan = this.settings().playerLan;
 			const port = await server.start(lan);
 			this.server = server;
 			this.url = `http://${lan ? await lanAddress() : '127.0.0.1'}:${port}`;
-			new Notice(`Player view of “${file.basename.replace(/\.hexmap$/, '')}”: ${this.url}${lan ? '' : ' (this computer only: turn on LAN access in the settings for other devices)'}`, 8000);
+			announcePlayerView(this.app, file.basename.replace(/\.hexmap$/, ''), this.url, lan);
 		} catch (e) {
 			await this.stop(false);
+			console.error('HexLore: the player view did not start', e);
 			new Notice(`Could not start the player view: ${(e as Error).message}`);
 		}
 		this.changed();
@@ -169,23 +170,6 @@ export class PlayerControl {
 		el.setAttr('aria-label', `Serving “${this.file?.basename.replace(/\.hexmap$/, '') ?? ''}” to players. Click to copy the link.`);
 	}
 
-	/** The settings group (plugin settings → Player view). */
-	settingGroup(): SettingDefinitionItem[] {
-		return [
-			{
-				type: 'group',
-				heading: 'Player view',
-				items: [
-					{
-						name: 'Reachable from the local network',
-						desc: 'Off: only this computer can open the player view. On: phones and laptops on the same network can (on Windows, allow Obsidian through the firewall when asked, for private networks). Players only ever get the revealed map.',
-						control: { type: 'toggle', key: 'playerLan' },
-					},
-				],
-			},
-		];
-	}
-
 	/** The LAN setting changed: a running server rebinds. */
 	async lanChanged(): Promise<void> {
 		await this.saveSettings();
@@ -195,15 +179,9 @@ export class PlayerControl {
 
 /** Best-effort LAN address: the first non-internal IPv4 one. */
 async function lanAddress(): Promise<string> {
-	try {
-		let os: typeof import('os') | null = null;
-		if (Platform.isDesktop && Platform.isDesktopApp) os = await import('os');
-		if (!os) return '127.0.0.1';
-		for (const list of Object.values(os.networkInterfaces())) {
-			for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
-		}
-	} catch {
-		/* fall through */
+	const os = await nodeModule('os');
+	for (const list of Object.values(os?.networkInterfaces() ?? {})) {
+		for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
 	}
 	return '127.0.0.1';
 }

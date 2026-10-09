@@ -1,15 +1,14 @@
-import { MarkdownView, Notice, Plugin, TFile, type SettingDefinitionItem, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
 import { exportToFlutter } from './convert/export_command';
 import { PlayerControl } from './server/control';
-import { HexLoreSettingTab, readSettings, type HexLoreSettings, type SettingsHost } from './settings';
+import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
 
-export default class HexLorePlugin extends Plugin implements SettingsHost {
+export default class HexLorePlugin extends Plugin {
 	settings!: HexLoreSettings;
-	settingGroups: (() => SettingDefinitionItem[])[] = [];
 
 	/** Index notes the GM chose to read as Markdown this session. */
 	private asMarkdown = new Set<string>();
@@ -22,7 +21,6 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 		this.addSettingTab(new HexLoreSettingTab(this.app, this));
 		this.stores = new StoreRegistry(this);
 		this.players = new PlayerControl(this.app, this.stores, () => this.settings, () => this.saveSettings());
-		this.settingGroups.push(() => this.players.settingGroup());
 		this.players.attachStatusBar(this.addStatusBarItem());
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
@@ -35,6 +33,7 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				playerLan: () => this.settings.playerLan,
 				setPlayerLan: (on) => {
 					this.settings.playerLan = on;
+					if (on) new Notice('Devices on the same network can now open the player view. On Windows, allow Obsidian through the firewall when asked (private networks).', 8000);
 					void this.players.lanChanged();
 				},
 				templatesFolder: () => this.settings.templatesFolder,
@@ -153,10 +152,6 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 			callback: () =>
 				void this.app.workspace.getLeaf('tab').setViewState({ type: MAP_VIEW, active: true, state: { synthetic: true } }),
 		});
-	}
-
-	settingChanged(key: string): void {
-		if (key === 'playerLan') void this.players.lanChanged();
 	}
 
 	/** The map of the active view (a map view, or its index open as Markdown). */

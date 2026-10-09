@@ -36,8 +36,11 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 - `src/core/` is pure TypeScript: no `obsidian`, no DOM, no Node import. It
   mirrors Flutter's `lib/core/` file for file where it can (`map_palette.dart`
   → `map_palette.ts`), so a Dart change is easy to follow here.
-- Node modules (`http`, `fs`) are desktop-only and load lazily
-  (`Platform.isDesktop`); the plugin is not declared desktop-only.
+- Node modules (`http`, `fs`, `os`) are desktop-only and load lazily,
+  ONLY through `src/desktop.ts` (`nodeModule`); the plugin is not declared
+  desktop-only. Never `await import('http')` directly: esbuild keeps it,
+  Obsidian's renderer cannot resolve it, and the feature silently does
+  nothing (the tests, under Node, would still pass).
 
 ## Rules carried over from Flutter
 
@@ -104,14 +107,21 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   map share one history.
 - `src/view/map_view.ts` — the `.hexmap.md` map view: tools (1–8, decision
   6), selection, context menu, keys (view `Scope`); `toolbar.ts` is the
-  tool strip + paint palette (derived from the art registry); `top_bar.ts`
+  tool strip + paint palette (derived from the art registry: named tiles
+  with previews drawn by the renderer's own `paintBiomeStamp` / `paintGlyph`
+  via `pick_preview.ts`; erasers in a section of their own); a river's
+  width is in its right-click menu (presets + exact), not the sidebar; `top_bar.ts`
   mirrors Flutter's title bar (decision 30: left = the map menu, quick jump
   Ctrl+K, adventures, session notes; centre = Hex | Sketch; right = undo /
   redo, reset view Ctrl+0, Display & overlays, the players split button),
   its dialogs in `map_menus.ts` — keep its menus and entries in step with
-  Flutter's;
+  Flutter's; `display_panel.ts` is its Display & overlays popover (Flutter's
+  `overlay_panel.dart`: overlays per MAP, display per DEVICE, pills for
+  one-or-the-other choices). ONE PLACE PER SETTING: what the map shows lives
+  only there, never again in the sidebar or the settings tab;
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
-  map). `main.ts` switches a Markdown leaf on an index to the map view
+  map; the selection, regions, sketch tools, travel votes — no display
+  choices). `main.ts` switches a Markdown leaf on an index to the map view
   ("Open as Markdown" to go back).
 - Input (as Flutter's canvas): left-drag = the tool (select: rubber band);
   middle-drag / Space+drag / trackpad scroll pan; wheel and pinch zoom;
@@ -139,12 +149,15 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `/api/map` = the ported `player_filter` output with an ETag (304 while
   unchanged; `player.js` sends it back), `/api/votes`, `POST /api/vote`
   (`core/travel_votes.ts`, in memory, checked against the GRID). Ports
-  5174–5180, localhost unless the LAN setting is on. `control.ts` is the
-  Obsidian side: one map served at a time, from its LIVE store model (a
+  5174–5180, localhost unless "Serve on the local network" (players menu)
+  is on. `control.ts` is the Obsidian side: one map served at a time, from its LIVE store model (a
   reveal reaches players on the next poll), a newer format refused (503),
-  `http`/`os` imported only under `Platform.isDesktop` (the lint rule wants
-  that guard), status-bar link, vote badges on the GM map, "Player view"
-  in the map panel. `/api/art` (the registry as data) is NOT done: it needs
+  `http`/`os` through `nodeModule`, a failed start told to the GM (never
+  a rejected promise nobody awaits), `started_modal.ts` (on every start: the link, who can open
+  it, how reveals and votes work; the GM can turn it into a notice),
+  status-bar link, vote badges on the GM map, the travel
+  votes in the map panel (start / stop are the players button only).
+  `/api/art` (the registry as data) is NOT done: it needs
   `player.js` to take its tables from the server, a Flutter-side change.
 - `src/convert/` — "Export as a campaign folder…" (item 2.7), following
   `vendor/docs/converter.md` §5 (the contract BOTH converters follow;
@@ -183,8 +196,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   (`view/trace_image.ts`) is a vault image linked from the index
   (`trace-image:`), placed by Flutter's own `sketch/trace_image.json`;
   display state, never undoable. The swatch editor (stage 3) is in the map
-  panel. "Sketch over the map" (Display) shows it in the hex view faintly,
-  or its labels only.
+  panel. "Sketch overlay" (Display & overlays) shows it in the hex view
+  faintly, or its labels only (the mode is kept while hidden).
 - The importer (item 2.9, decisions 12–12l; READ
   `../hexlore_flutter/lib/importer/CLAUDE.md` before changing it):
   `src/importer/` ports Flutter's `lib/importer/` file for file, on plain
@@ -202,10 +215,12 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   step); libraries live in the plugin folder (`import-libraries.json`,
   Flutter's format); the picture can stay as the map's underlay
   (`underlay:` link + `import/underlay.json`), drawn translucent over the
-  fills from the Display panel. NOT ported: the optional Ollama
+  fills from Display & overlays. NOT ported: the optional Ollama
   classifier, and the multi-isolate fan-out (chunks yield to the UI instead).
 - `src/settings.ts` — vault settings (data.json), declarative
-  `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
+  `getSettingDefinitions` (Obsidian 1.13): only what has no better home
+  (the templates folder); `playerLan` is stored here, switched from the
+  players menu.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane
   menu → "Benchmark the renderer"); keep it to compare renderer changes.
 

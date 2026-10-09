@@ -71,7 +71,7 @@ describe('the map view', () => {
 });
 
 describe('the side views', () => {
-	it('the map panel renders a hex, its notes, people, and the player view', async () => {
+	it('the map panel renders a hex, its notes, people, and the travel votes', async () => {
 		const leaf = await openLeaf(INSPECTOR_VIEW);
 		const panel = leaf.view as unknown as InspectorView;
 		app.workspace.activeLeaf = mapLeaf;
@@ -84,7 +84,13 @@ describe('the side views', () => {
 		expect(text).toContain('People and quests here');
 		(map as unknown as { setSelection(c: string[]): void }).setSelection([]);
 		await tick(20);
-		expect(panel.contentEl.textContent).toContain('Player view');
+		expect(panel.contentEl.textContent).not.toContain('Travel votes');
+		await plugin.players.start(map.mapState().file!);
+		await tick(20);
+		expect(panel.contentEl.textContent).toContain('Travel votes');
+		await plugin.players.stop();
+		// What the map shows is the top bar's panel, never repeated here.
+		expect(panel.contentEl.textContent).not.toContain('Map style');
 	});
 
 	it('the sections sidebar lists the fixture’s sections and notes', async () => {
@@ -180,7 +186,8 @@ describe('the dialogs', () => {
 		const tab = new HexLoreSettingTab(app as never, plugin);
 		const defs = JSON.stringify(tab.getSettingDefinitions());
 		expect(defs).toContain('templatesFolder');
-		expect(defs).toContain('playerLan');
+		// Switched from the players menu only (one place per setting).
+		expect(defs).not.toContain('playerLan');
 	});
 
 	it('the import wizard runs every step on a synthetic map', async () => {
@@ -230,7 +237,7 @@ describe('the top bar (Flutter decision 30)', () => {
 	it('shows the map name and the view switch', () => {
 		expect(bar()).not.toBeNull();
 		expect(bar().querySelector('.hexlore-topbar-name')?.textContent).toBe('Fixture');
-		const segs = bar().querySelectorAll('.hexlore-topbar-segment');
+		const segs = bar().querySelectorAll('.hexlore-segment');
 		expect(Array.from(segs, (s) => s.textContent)).toEqual(['Hex', 'Sketch']);
 		expect(segs[0]!.classList.contains('is-active')).toBe(true);
 	});
@@ -256,27 +263,129 @@ describe('the top bar (Flutter decision 30)', () => {
 		m.close();
 	});
 
-	it('adventures, session notes, display and players menus build', () => {
+	it('adventures, session notes and players menus build', () => {
 		const icons = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button');
 		const titlesOf = (el: HTMLElement) => menuOf(el)?.items.map((i) => i.title) ?? [];
 		// left: search, adventures, notes; right: undo, redo, reset, display, players, players ▾
 		expect(titlesOf(icons[1]!)).toContain('New adventure…');
 		const notes = titlesOf(icons[2]!);
 		expect(notes).toEqual(expect.arrayContaining(['New session document…', 'Unassigned characters and quests…']));
-		expect(titlesOf(icons[6]!)).toEqual(expect.arrayContaining(['Clean style', 'Illustrated style', 'Threads', 'Regions', 'Borders']));
 		expect(titlesOf(icons[8]!)).toEqual(expect.arrayContaining(['Serve on the local network', 'Reveal all hexes to players', 'Hide all hexes from players']));
 		menuOf(icons[2]!)!.choose('Unassigned characters and quests…');
 		Modal.open.at(-1)!.close();
 	});
 
+	it('the Display & overlays panel: pills, eyes, the sketch overlay, and closing', async () => {
+		const button = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button')[6]!;
+		const panel = () => map.containerEl.querySelector<HTMLElement>('.hexlore-display-panel');
+		const rowOf = (label: string) => Array.from(panel()!.querySelectorAll<HTMLElement>('.hexlore-display-row')).find((r) => r.querySelector('.hexlore-display-label')?.textContent === label)!;
+		button.click();
+		expect(panel()).not.toBeNull();
+		const text = panel()!.textContent ?? '';
+		for (const t of ['Overlays · this map', 'Display · this device', 'Threads', 'Regions', 'Borders', 'Sketch overlay']) expect(text).toContain(t);
+		// One-or-the-other as pills.
+		const style = rowOf('Map style').querySelectorAll<HTMLElement>('.hexlore-segment');
+		expect(Array.from(style, (s) => s.textContent)).toEqual(['Clean', 'Illustrated']);
+		style[1]!.click();
+		await tick(20);
+		expect(map.mapState().display.style).toBe('illustrated');
+		expect(rowOf('Map style').querySelector('.hexlore-segment.is-active')?.textContent).toBe('Illustrated');
+		map.setDisplay({ style: 'clean' });
+		// The section eye hides the overlay; a second click brings it back.
+		const eye = () => rowOf('Regions').querySelector<HTMLElement>('.hexlore-display-icon:not([data-icon^="chevron"])')!;
+		eye().click();
+		await tick(20);
+		expect(map.mapState().overlays.regions).toBe(false);
+		eye().click();
+		await tick(20);
+		expect(map.mapState().overlays.regions).toBe(true);
+		// "Labels only" is remembered while the sketch overlay is hidden.
+		rowOf('Sketch overlay').querySelector<HTMLElement>('.hexlore-display-chip')!.click();
+		await tick(20);
+		expect(map.sketchMode.prefs).toMatchObject({ overlay: 'none', overlayMode: 'labels' });
+		rowOf('Sketch overlay').querySelector<HTMLElement>('.hexlore-display-icon')!.click();
+		await tick(20);
+		expect(map.sketchMode.prefs.overlay).toBe('labels');
+		map.sketchMode.showOverlay(false, 'full');
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		expect(panel()).toBeNull();
+		button.click();
+		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		expect(panel()).toBeNull();
+	});
+
 	it('the Sketch segment switches the view, Hex switches back', async () => {
-		button('.hexlore-topbar-segment', 1).dispatchEvent(new MouseEvent('click'));
+		button('.hexlore-segment', 1).dispatchEvent(new MouseEvent('click'));
 		await tick(20);
 		expect(map.sketchMode.active).toBe(true);
-		expect(button('.hexlore-topbar-segment', 1).classList.contains('is-active')).toBe(true);
-		button('.hexlore-topbar-segment', 0).dispatchEvent(new MouseEvent('click'));
+		expect(button('.hexlore-segment', 1).classList.contains('is-active')).toBe(true);
+		button('.hexlore-segment', 0).dispatchEvent(new MouseEvent('click'));
 		await tick(20);
 		expect(map.sketchMode.active).toBe(false);
+	});
+});
+
+describe('rivers and roads', () => {
+	type Lines = {
+		lineMenu(line: { kind: 'river' | 'route'; id: string }, point: number, e: MouseEvent): void;
+		deleteKey(): boolean;
+	};
+	const c = (q: number, r: number) => ({ kind: 'c', q, r, k: 0 });
+
+	it('the river menu sets the width (presets, then exact); the panel has no slider', () => {
+		const editor = map.mapState().editor!;
+		const river = editor.createRiver([c(0, 0), c(1, 0), c(2, 0)])!;
+		(map as unknown as Lines).lineMenu({ kind: 'river', id: river.id }, -1, new MouseEvent('contextmenu'));
+		const menu = Menu.last!;
+		expect(menu.items.map((i) => i.title)).toEqual(expect.arrayContaining(['Width', 'Stream', 'River', 'Wide river', 'Great river']));
+		expect(menu.items.find((i) => i.title === 'River')?.checked).toBe(true);
+		menu.choose('Wide river');
+		expect(editor.model.rivers.get(river.id)!.width).toBe(1.75);
+		(map as unknown as Lines).lineMenu({ kind: 'river', id: river.id }, -1, new MouseEvent('contextmenu'));
+		Menu.last!.choose('Exact width…');
+		const dlg = Modal.open.at(-1)!;
+		dlg.contentEl.querySelectorAll('button')[1]!.click(); // +
+		expect(editor.model.rivers.get(river.id)!.width).toBeCloseTo(1.9);
+		dlg.close();
+		editor.undo.undo();
+		expect(editor.model.rivers.get(river.id)!.width).toBe(1.75); // the dialog was one step
+		map.selectLine({ kind: 'river', id: river.id });
+	});
+
+	it('Delete removes the selected river or road (a held point first)', () => {
+		const editor = map.mapState().editor!;
+		const keys = map as unknown as Lines;
+		for (const make of [() => ({ kind: 'river' as const, id: editor.createRiver([c(0, 2), c(1, 2), c(2, 2)])!.id }), () => ({ kind: 'route' as const, id: editor.createRoute([c(0, 3), c(1, 3), c(2, 3)], 'trail', '#6B4A2F')!.id })]) {
+			const line = make();
+			const lines = () => (line.kind === 'river' ? editor.model.rivers : editor.model.routes);
+			map.selectLine(line, 1);
+			keys.deleteKey(); // the held point
+			expect(lines().get(line.id)?.nodes.length).toBe(2);
+			keys.deleteKey(); // then the line itself
+			expect(lines().has(line.id)).toBe(false);
+			expect(map.mapState().selectedLine).toBeNull();
+		}
+	});
+});
+
+describe('the brush palette', () => {
+	it('names every biome and icon, draws variants, and keeps erasing apart', () => {
+		const swatch = map.containerEl.querySelector<HTMLElement>('.hexlore-pick-swatch')!;
+		map.setTool('paint');
+		swatch.click();
+		const pal = map.containerEl.querySelector<HTMLElement>('.hexlore-palette')!;
+		const titles = () => Array.from(pal.querySelectorAll('.hexlore-palette-title'), (t) => t.textContent);
+		const labels = (n: number) => Array.from(pal.querySelectorAll('.hexlore-palette-grid')[n]!.querySelectorAll('.hexlore-palette-label'), (l) => l.textContent);
+		expect(labels(0)).toEqual(expect.arrayContaining(['Forest', 'Mountain', 'Sea']));
+		expect(labels(1)).toEqual(expect.arrayContaining(['City', 'Ruins', 'Dungeon']));
+		expect(pal.querySelectorAll('.hexlore-palette-item canvas.hexlore-pick-preview').length).toBeGreaterThan(10);
+		const pick = (label: string) => Array.from(pal.querySelectorAll<HTMLElement>('.hexlore-palette-item')).find((t) => t.textContent === label)!.click();
+		pick('City');
+		expect(titles()).toContain('City variants');
+		expect(titles().at(-1)).toBe('Erase'); // its own section, last
+		pick('Icon');
+		expect(map.mapState().editor && (map as unknown as { pick: { clearsFeature: boolean } }).pick.clearsFeature).toBe(true);
+		swatch.click();
 	});
 });
 
@@ -286,6 +395,12 @@ describe('the player view control', () => {
 		await plugin.players.start(file);
 		expect(plugin.players.running).toBe(true);
 		expect(plugin.players.url).toMatch(/^http:\/\/127\.0\.0\.1:51\d\d$/);
+		// The GM is told where it is and how players come to see anything.
+		const told = Modal.open.at(-1)!;
+		expect(told.contentEl.textContent).toContain(plugin.players.url!);
+		expect(told.contentEl.textContent).toContain('Serve on the local network');
+		expect(told.contentEl.textContent).toContain('fog tool');
+		told.close();
 		// Node's fetch, not Obsidian's requestUrl: this runs under node.
 		const res = await globalThis.fetch(`${plugin.players.url}/api/map`).catch(() => null);
 		if (res) expect(res.status).toBe(200);

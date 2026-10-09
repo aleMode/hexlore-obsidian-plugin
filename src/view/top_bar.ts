@@ -27,8 +27,9 @@ export interface TopBarHost {
 	quickJump(): void;
 	adventuresMenu(e: MouseEvent): void;
 	notesMenu(e: MouseEvent): void;
-	displayMenu(e: MouseEvent): void;
 	playersMenu(e: MouseEvent): void;
+	/** The Display & overlays panel, opened under its button. */
+	toggleDisplay(button: HTMLElement): void;
 }
 
 export class TopBar {
@@ -63,11 +64,11 @@ export class TopBar {
 		this.needsEditor.push(this.icon(left, 'sticky-note', 'Session notes', (e) => host.notesMenu(e)));
 
 		// Centre: which view.
-		const sw = centre.createDiv({ cls: 'hexlore-topbar-switch' });
-		this.hexBtn = sw.createDiv({ cls: 'hexlore-topbar-segment', text: 'Hex' });
+		const sw = centre.createDiv({ cls: 'hexlore-segments' });
+		this.hexBtn = sw.createDiv({ cls: 'hexlore-segment', text: 'Hex' });
 		setTooltip(this.hexBtn, 'The hex map');
 		this.hexBtn.addEventListener('click', () => host.setSketching(false));
-		this.sketchBtn = sw.createDiv({ cls: 'hexlore-topbar-segment', text: 'Sketch' });
+		this.sketchBtn = sw.createDiv({ cls: 'hexlore-segment', text: 'Sketch' });
 		setTooltip(this.sketchBtn, 'Draw freely over the lattice, then hexify');
 		this.sketchBtn.addEventListener('click', () => host.setSketching(true));
 		this.needsEditor.push(this.sketchBtn);
@@ -77,7 +78,7 @@ export class TopBar {
 		this.redoBtn = this.icon(right, 'redo-2', 'Redo (Ctrl+Shift+Z)', () => host.redo());
 		this.divider(right);
 		this.icon(right, 'locate-fixed', 'Reset view (fit the map)', () => host.resetView());
-		this.icon(right, 'sliders-horizontal', 'Display and overlays', (e) => host.displayMenu(e));
+		const display = this.icon(right, 'sliders-horizontal', 'Display and overlays', () => host.toggleDisplay(display));
 		this.divider(right);
 		const players = right.createDiv({ cls: 'hexlore-topbar-split' });
 		this.playersBtn = this.icon(players, 'cast', '', () => host.togglePlayers());

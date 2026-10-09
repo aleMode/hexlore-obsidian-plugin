@@ -1,13 +1,12 @@
 // The map panel (right sidebar): what is selected on the active map and what
-// can be done to it; the regions; and Display & overlays (decision 27). It
-// follows whichever map view was last active.
+// can be done to it; the regions; the players' travel votes. It follows
+// whichever map view was last active. What the map SHOWS is not here: that
+// is the top bar's Display & overlays panel (display_panel.ts), and only there.
 
 import { FuzzySuggestModal, ItemView, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type DropdownComponent, type Events, type WorkspaceLeaf } from 'obsidian';
 import { displayIdFor } from '../core/hex';
 import { hexIdFor } from '../core/hex_data';
-import { threadColorGroups } from '../core/overlay_filter';
 import { parseEncounters, rollEncounter } from '../core/region_encounters';
-import { RIVER_WIDTH_MAX, RIVER_WIDTH_MIN } from '../core/river';
 import type { Cell, LineKind, MapEditor } from '../edit/editor';
 import { ART } from '../render/art';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
@@ -26,7 +25,6 @@ export const INSPECTOR_VIEW = 'hexlore-panel';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
-const OPEN_KEY = 'hexlore-panel-open';
 const SECONDARY_KEY = 'hexlore-panel-secondary';
 const SWATCHES_KEY = 'hexlore-panel-swatches';
 
@@ -147,13 +145,8 @@ export class InspectorView extends ItemView {
 				.addExtraButton((b) => b.setIcon('x').setTooltip('Clear the highlight').onClick(() => map.clearNoteHighlight()))
 				.settingEl.addClass('hexlore-panel-highlight');
 		}
-		if (editor && this.map.sketchMode.active) {
-			this.renderSketch(editor);
-			this.renderDisplay(state);
-			el.scrollTop = scroll;
-			return;
-		}
-		if (editor) {
+		if (editor && this.map.sketchMode.active) this.renderSketch(editor);
+		else if (editor) {
 			if (state.selectedLine) this.renderLine(state.selectedLine, state.heldPoint, editor);
 			else if (state.selectedThread) this.renderThread(state.selectedThread, editor);
 			else if (state.selection.length === 1) this.renderHex(state.selection[0]!, editor, state.links);
@@ -161,10 +154,9 @@ export class InspectorView extends ItemView {
 			if (state.tool === 'region' || (!state.selectedLine && !state.selectedThread && !state.selection.length)) this.renderRegions(state, editor);
 			if (!state.selectedLine && !state.selectedThread && !state.selection.length && state.tool !== 'region') {
 				this.renderSummary(editor);
-				this.renderPlayerView(state.file, editor);
+				this.renderVotes(state.file, editor);
 			}
 		}
-		this.renderDisplay(state);
 		el.scrollTop = scroll;
 	}
 
@@ -311,56 +303,32 @@ export class InspectorView extends ItemView {
 
 	// ----- the player view (item 2.6) -------------------------------------------------
 
-	private renderPlayerView(file: TFile | null, editor: MapEditor): void {
+	/** The players' travel votes, while this map is served. Starting and
+	 *  stopping the player view is the top bar's players button. */
+	private renderVotes(file: TFile | null, editor: MapEditor): void {
 		const el = this.contentEl;
 		const p = this.players;
-		this.section('Player view');
-		if (!file) return;
-		if (p.serves(file) && p.url) {
-			const url = p.url;
-			new Setting(el)
-				.setName('Players see this map')
-				.setDesc(url)
-				.addButton((b) => b.setButtonText('Copy link').onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))))
-				.addButton((b) => b.setButtonText('Open').onClick(() => window.open(url)))
-				.addButton((b) =>
-					b
-						.setButtonText('Stop')
-						.setDestructive()
-						.onClick(() => void p.stop()),
-				);
-			const results = p.votes();
-			if (!results.length) {
-				el.createDiv({ cls: 'setting-item-description', text: 'No travel votes yet: players click a hex on their map to vote for where the party goes next.' });
-				return;
-			}
-			const list = el.createDiv({ cls: 'hexlore-panel-notes' });
-			for (const r of results) {
-				const row = list.createDiv({ cls: 'hexlore-note-row hexlore-vote-row' });
-				row.createSpan({ cls: 'hexlore-vote-count', text: String(r.voterNames.length) });
-				const m = /^q(-?\d+)_r(-?\d+)$/.exec(r.hexId);
-				const q = Number(m?.[1]), rr = Number(m?.[2]);
-				const label = editor.model.hexes.get(r.hexId)?.name || (m ? displayIdFor(q, rr) : r.hexId);
-				const a = row.createEl('a', { text: label, cls: 'internal-link' });
-				a.addEventListener('click', (e) => {
-					e.preventDefault();
-					this.map?.showHexes(new Set([r.hexId]), `Votes for ${label}`);
-				});
-				row.createSpan({ cls: 'hexlore-vote-names', text: r.voterNames.join(', ') });
-			}
-			new Setting(el).addButton((b) => b.setButtonText('Clear votes').onClick(() => p.clearVotes()));
-		} else {
-			const other = p.running && p.file ? p.file.basename.replace(/\.hexmap$/, '') : null;
-			new Setting(el)
-				.setName(other ? `Players see “${other}”` : 'Off')
-				.setDesc('Players open a link in a browser and see only the revealed map — never notes, regions or threads.')
-				.addButton((b) =>
-					b
-						.setButtonText(other ? 'Serve this map instead' : 'Start')
-						.setCta()
-						.onClick(() => void p.start(file)),
-				);
+		if (!file || !p.serves(file)) return;
+		this.section('Travel votes');
+		const results = p.votes();
+		if (!results.length) {
+			el.createDiv({ cls: 'setting-item-description', text: 'None yet: players click a hex on their map to vote for where the party goes next.' });
+			return;
 		}
+		const list = el.createDiv({ cls: 'hexlore-panel-notes' });
+		for (const r of results) {
+			const row = list.createDiv({ cls: 'hexlore-note-row hexlore-vote-row' });
+			row.createSpan({ cls: 'hexlore-vote-count', text: String(r.voterNames.length) });
+			const m = /^q(-?\d+)_r(-?\d+)$/.exec(r.hexId);
+			const label = editor.model.hexes.get(r.hexId)?.name || (m ? displayIdFor(Number(m[1]), Number(m[2])) : r.hexId);
+			const a = row.createEl('a', { text: label, cls: 'internal-link' });
+			a.addEventListener('click', (e) => {
+				e.preventDefault();
+				this.map?.showHexes(new Set([r.hexId]), `Votes for ${label}`);
+			});
+			row.createSpan({ cls: 'hexlore-vote-names', text: r.voterNames.join(', ') });
+		}
+		new Setting(el).addButton((b) => b.setButtonText('Clear votes').onClick(() => p.clearVotes()));
 	}
 
 	// ----- hexes ---------------------------------------------------------------------
@@ -621,14 +589,7 @@ export class InspectorView extends ItemView {
 		if (line.kind === 'river') {
 			const r = m.rivers.get(line.id);
 			if (!r) return;
-			el.createEl('h4', { text: 'River', cls: 'hexlore-panel-hex' }).createSpan({ cls: 'hexlore-panel-coords', text: `  ${plural(r.nodes.length, 'point')}` });
-			new Setting(el).setName('Width').addSlider((s) =>
-				s
-					.setLimits(RIVER_WIDTH_MIN, RIVER_WIDTH_MAX, 0.05)
-					.setValue(r.width)
-					.setDisabled(ro)
-					.onChange((v) => editor.setRiverWidth(line.id, v)),
-			);
+			el.createEl('h4', { text: 'River', cls: 'hexlore-panel-hex' }).createSpan({ cls: 'hexlore-panel-coords', text: `  ${plural(r.nodes.length, 'point')} · width ${r.width.toFixed(2)}` });
 		} else {
 			const r = m.routes.get(line.id);
 			if (!r) return;
@@ -658,7 +619,7 @@ export class InspectorView extends ItemView {
 		}
 		el.createDiv({
 			cls: 'setting-item-description',
-			text: 'Drag a point to move it; double-click the line to add one; click a point and press Delete to remove it.',
+			text: `Drag a point to move it; double-click the line to add one; click a point and press Delete to remove it. Delete with no point held removes the whole ${line.kind === 'river' ? 'river' : 'line'}.${line.kind === 'river' ? ' Right-click it for its width.' : ''}`,
 		});
 		new Setting(el)
 			.addButton((b) =>
@@ -736,17 +697,6 @@ export class InspectorView extends ItemView {
 			chip.style.setProperty('--chip', g.color);
 			const name = row.createDiv({ cls: 'hexlore-region-name', text: g.name || 'Untitled' });
 			row.createDiv({ cls: 'hexlore-region-count', text: String(g.cells.length) });
-			const hidden = !state.overlays.regions || state.overlays.hiddenRegions.includes(g.id);
-			const eye = row.createDiv({ cls: 'clickable-icon' });
-			setIcon(eye, hidden ? 'eye-off' : 'eye');
-			eye.setAttr('aria-label', hidden ? 'Show' : 'Hide');
-			eye.addEventListener('click', (e) => {
-				e.stopPropagation();
-				const ids = new Set(state.overlays.hiddenRegions);
-				if (hidden) ids.delete(g.id);
-				else ids.add(g.id);
-				map.setOverlays({ regions: true, hiddenRegions: [...ids] });
-			});
 			const pick = () => map.setActiveRegion(g.id);
 			name.addEventListener('click', pick);
 			chip.addEventListener('click', pick);
@@ -879,90 +829,6 @@ export class InspectorView extends ItemView {
 		this.lastRoll = { region: regionId, text: result ? `Rolled: ${result}` : text };
 		new Notice(result ? `Encounter: ${result}` : text, 6000);
 		this.render();
-	}
-
-	// ----- display & overlays ----------------------------------------------------------------
-
-	private renderDisplay(state: MapPanelState): void {
-		const el = this.contentEl;
-		const map = this.map!;
-		const details = el.createEl('details', { cls: 'hexlore-panel-display' });
-		details.open = this.app.loadLocalStorage(OPEN_KEY) === true;
-		details.addEventListener('toggle', () => this.app.saveLocalStorage(OPEN_KEY, details.open));
-		details.createEl('summary', { text: 'Display and overlays' });
-		const d = state.display;
-		details.createDiv({ cls: 'hexlore-panel-subtitle', text: 'This device, every map' });
-		new Setting(details).setName('Map style').addDropdown((dd) =>
-			dd
-				.addOption('clean', 'Clean')
-				.addOption('illustrated', 'Illustrated')
-				.setValue(d.style)
-				.onChange((v) => map.setDisplay({ style: v === 'illustrated' ? 'illustrated' : 'clean' })),
-		);
-		new Setting(details).setName('Blend biome borders').addToggle((t) => t.setValue(d.blend).onChange((v) => map.setDisplay({ blend: v })));
-		new Setting(details).setName('Threads drawn as').addDropdown((dd) =>
-			dd
-				.addOption('arc', 'Arcs')
-				.addOption('ribbon', 'Straight ribbons')
-				.setValue(d.threadStyle)
-				.onChange((v) => map.setDisplay({ threadStyle: v === 'ribbon' ? 'ribbon' : 'arc' })),
-		);
-		new Setting(details)
-			.setName('Hatch unwritten hexes')
-			.setDesc('Hexes with no name yet. Players never see it.')
-			.addToggle((t) => t.setValue(d.gmFog).onChange((v) => map.setDisplay({ gmFog: v })));
-		new Setting(details).setName('Sketch over the map').addDropdown((dd) =>
-			dd
-				.addOption('none', 'Hidden')
-				.addOption('full', 'Faint, everything')
-				.addOption('labels', 'Labels only')
-				.setValue(map.sketchMode.prefs.overlay)
-				.onChange((v) => map.sketchMode.setPrefs({ overlay: v === 'full' || v === 'labels' ? v : 'none' })),
-		);
-		new Setting(details)
-			.setName('Player badges')
-			.setDesc('An eye on revealed hexes, a slashed ring on secret features.')
-			.addToggle((t) => t.setValue(d.badges).onChange((v) => map.setDisplay({ badges: v })));
-
-		const o = state.overlays;
-		details.createDiv({ cls: 'hexlore-panel-subtitle', text: 'This map' });
-		const editor = state.editor;
-		new Setting(details).setName('Threads').addToggle((t) => t.setValue(o.threads).onChange((v) => map.setOverlays({ threads: v })));
-		if (editor) {
-			for (const group of threadColorGroups(editor.model.threads.values())) {
-				const shown = !o.hiddenThreadColors.includes(group.key);
-				const row = new Setting(details).setName(group.names.join(', ')).setDesc(plural(group.count, 'thread'));
-				row.settingEl.addClass('hexlore-sub-row');
-				row.settingEl.toggleClass('is-dimmed', !o.threads);
-				const chip = row.nameEl.createDiv({ cls: 'hexlore-swatch is-small' });
-				chip.style.setProperty('--chip', group.key);
-				row.nameEl.prepend(chip);
-				row.addToggle((t) =>
-					t.setValue(shown).onChange((v) => {
-						const keys = new Set(o.hiddenThreadColors);
-						if (v) keys.delete(group.key);
-						else keys.add(group.key);
-						map.setOverlays({ hiddenThreadColors: [...keys] });
-					}),
-				);
-			}
-		}
-		new Setting(details).setName('Regions').addToggle((t) => t.setValue(o.regions).onChange((v) => map.setOverlays({ regions: v })));
-		const underlay = map.underlayName;
-		if (underlay) {
-			new Setting(details)
-				.setName('Imported picture underneath')
-				.setDesc(underlay)
-				.addToggle((t) => t.setValue(o.underlay).onChange((v) => map.setOverlays({ underlay: v })))
-				.addExtraButton((b) => b.setIcon('trash-2').setTooltip('Stop using it as the underlay (the picture stays in the vault)').onClick(() => void map.removeUnderlay()));
-			if (o.underlay) {
-				new Setting(details)
-					.setName('Its opacity')
-					.addSlider((sl) => sl.setLimits(0.05, 1, 0.05).setValue(d.underlayOpacity).onChange((v) => map.setDisplay({ underlayOpacity: v })))
-					.settingEl.addClass('hexlore-sub-row');
-			}
-		}
-		new Setting(details).setName('Borders').addToggle((t) => t.setValue(o.borders).onChange((v) => map.setOverlays({ borders: v })));
 	}
 }
 

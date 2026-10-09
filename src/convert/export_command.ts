@@ -3,7 +3,8 @@
 // §5.1), plans the Flutter campaign (flutter_export.ts) and writes it with
 // Node's fs into a folder OUTSIDE the vault. Desktop only.
 
-import { FileSystemAdapter, Modal, Notice, Platform, Setting, TFile, TFolder, type App } from 'obsidian';
+import { FileSystemAdapter, Modal, Notice, Setting, TFile, TFolder, type App } from 'obsidian';
+import { nodeModule } from '../desktop';
 import { kindOf, locationLinks } from '../notes/note_meta';
 import { DEFAULT_SECTIONS, parseHexList, parseLinks, REGIONS, type Section } from '../storage/hexmap_index';
 import { sectionsOf } from '../storage/index_file';
@@ -51,13 +52,11 @@ function vaultBase(app: App): string | null {
 }
 
 export async function exportToFlutter(app: App, stores: StoreRegistry, index: TFile): Promise<void> {
-	if (!Platform.isDesktopApp) {
+	const fs = await nodeModule('fs');
+	if (!fs) {
 		new Notice('Exporting a campaign folder needs Obsidian on a computer.');
 		return;
 	}
-	let fs: Fs | null = null;
-	if (Platform.isDesktop && Platform.isDesktopApp) fs = await import('fs');
-	if (!fs) return;
 	const base = vaultBase(app);
 	const name = index.basename.replace(/\.hexmap$/, '');
 	const parent = base ? base.slice(0, base.lastIndexOf('/')) : '';

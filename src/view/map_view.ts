@@ -39,12 +39,14 @@ import type { StoreRegistry } from '../storage/store_registry';
 import { hexesByNote, hexesOfNote } from './vault_notes';
 import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { TopBar } from './top_bar';
-import { MapPicker, NewMapModal, QuickJumpModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
+import { DisplayPanel, type DisplayPanelState } from './display_panel';
+import { MapPicker, NewMapModal, QuickJumpModal, RIVER_WIDTH_PRESETS, RiverWidthModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
 import { NewNoteModal } from './inspector_view';
 import { createNote, notesInFolder, noteKind, templateFiles } from './vault_notes';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
 import { sectionsOf } from '../storage/index_file';
 import { displayIdFor } from '../core/hex';
+import { threadColorGroups } from '../core/overlay_filter';
 import { ImageExportModal } from './image_export_modal';
 import { HexifyModal } from './hexify_modal';
 import { ImportWizard, UNDERLAY_CONFIG } from './import_wizard';
@@ -227,6 +229,7 @@ export class MapView extends ItemView {
 	/** The Sketch view: a mode of this view, sharing its camera (item 2.8). */
 	sketchMode!: SketchMode;
 	private topBar: TopBar | null = null;
+	private displayPanel: DisplayPanel | null = null;
 	private trace: TraceImage | null = null;
 	private traceSaveTimer = 0;
 	/** Closed: the panel must stop showing this view. */
@@ -407,6 +410,7 @@ export class MapView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.closed = true;
+		this.displayPanel?.close();
 		this.editor?.endStroke();
 		this.flushCamera();
 		this.canvas.dispose();
@@ -661,30 +665,20 @@ export class MapView extends ItemView {
 		}
 	}
 
-	/** Display & overlays (decision 30): display per DEVICE, overlays per MAP. */
-	private displayMenu(evt: MouseEvent): void {
-		const d = this.loadDisplay();
-		const o = this.overlays;
-		const menu = new Menu();
-		const label = (t: string) => menu.addItem((i) => i.setTitle(t).setIsLabel(true));
-		label('This device, every map');
-		menu.addItem((i) => i.setTitle('Clean style').setChecked(d.style === 'clean').onClick(() => this.setDisplay({ style: 'clean' })));
-		menu.addItem((i) => i.setTitle('Illustrated style').setChecked(d.style === 'illustrated').onClick(() => this.setDisplay({ style: 'illustrated' })));
-		menu.addItem((i) => i.setTitle('Blend biome borders').setChecked(d.blend).onClick(() => this.setDisplay({ blend: !d.blend })));
-		menu.addItem((i) => i.setTitle('Threads as straight ribbons').setChecked(d.threadStyle === 'ribbon').onClick(() => this.setDisplay({ threadStyle: d.threadStyle === 'ribbon' ? 'arc' : 'ribbon' })));
-		menu.addItem((i) => i.setTitle('Hatch unwritten hexes').setChecked(d.gmFog).onClick(() => this.setDisplay({ gmFog: !d.gmFog })));
-		menu.addItem((i) => i.setTitle('Player badges').setChecked(d.badges).onClick(() => this.setDisplay({ badges: !d.badges })));
-		menu.addSeparator();
-		label('This map');
-		menu.addItem((i) => i.setTitle('Threads').setChecked(o.threads).onClick(() => this.setOverlays({ threads: !o.threads })));
-		menu.addItem((i) => i.setTitle('Regions').setChecked(o.regions).onClick(() => this.setOverlays({ regions: !o.regions })));
-		menu.addItem((i) => i.setTitle('Borders').setChecked(o.borders).onClick(() => this.setOverlays({ borders: !o.borders })));
-		if (this.underlay) menu.addItem((i) => i.setTitle('Imported picture underneath').setChecked(o.underlay).onClick(() => this.setOverlays({ underlay: !o.underlay })));
-		const sk = this.sketchMode.prefs.overlay;
-		menu.addItem((i) => i.setTitle('Sketch over the map').setChecked(sk !== 'none').onClick(() => this.sketchMode.setPrefs({ overlay: sk === 'none' ? 'full' : 'none' })));
-		menu.addSeparator();
-		menu.addItem((i) => i.setTitle('More in the map panel…').setIcon('panel-right').onClick(() => void this.panel.toggle()));
-		menu.showAtMouseEvent(evt);
+	/** What the Display & overlays panel shows (decisions 27, 30). */
+	displayState(): DisplayPanelState {
+		const m = this.editor?.model;
+		const sk = this.sketchMode.prefs;
+		return {
+			display: this.loadDisplay(),
+			overlays: this.overlays,
+			threadGroups: m ? threadColorGroups(m.threads.values()) : [],
+			regions: m ? [...m.regions.values()].sort((a, b) => a.zOrder - b.zOrder || (a.id < b.id ? -1 : 1)).map((g) => ({ id: g.id, name: g.name, color: g.color })) : [],
+			borders: m ? [...m.routes.values()].filter((r) => r.kind === 'border').length : 0,
+			underlay: this.underlayName,
+			sketchOverlay: sk.overlay,
+			sketchOverlayMode: sk.overlayMode,
+		};
 	}
 
 	// ----- the top bar (decision 30) ------------------------------------------------------
@@ -714,10 +708,18 @@ export class MapView extends ItemView {
 			quickJump: () => this.quickJump(),
 			adventuresMenu: (e) => this.sectionMenu(e, 'Adventures', 'New adventure…'),
 			notesMenu: (e) => this.sectionMenu(e, 'GM notes', 'New session document…', true),
-			displayMenu: (e) => this.displayMenu(e),
+			toggleDisplay: (button) => this.displayPanel?.toggle(button),
 			playersMenu: (e) => this.playersMenu(e),
 		});
 		root.prepend(this.topBar.el);
+		this.displayPanel = new DisplayPanel(root, {
+			app: this.app,
+			displayState: () => this.displayState(),
+			setDisplay: (change) => this.setDisplay(change),
+			setOverlays: (change) => this.setOverlays(change),
+			showSketchOverlay: (shown, mode) => this.sketchMode.showOverlay(shown, mode),
+			removeUnderlay: () => void this.removeUnderlay(),
+		});
 	}
 
 	/** The map menu, labelled with its name (Flutter's campaign menu). */
@@ -956,6 +958,7 @@ export class MapView extends ItemView {
 		this.broadcastPending = this.stage.win.requestAnimationFrame(() => {
 			this.broadcastPending = 0;
 			this.topBar?.refresh();
+			this.displayPanel?.refresh();
 			this.app.workspace.trigger(MAP_STATE_EVENT, this);
 		});
 	}
@@ -2162,8 +2165,9 @@ export class MapView extends ItemView {
 			return false;
 		});
 		this.scope.register([], 'Backspace', () => {
-			if (this.tool === 'river') this.riverDraft.pop();
-			else if (this.tool === 'route') this.routeDraft.pop();
+			// Backspace undoes a draft's last point; with no draft it deletes.
+			if (this.tool === 'river' && this.riverDraft.length) this.riverDraft.pop();
+			else if (this.tool === 'route' && this.routeDraft.length) this.routeDraft.pop();
 			else return this.deleteKey();
 			this.canvas.paintOverlay();
 			return false;
@@ -2227,13 +2231,18 @@ export class MapView extends ItemView {
 	}
 
 	/** Del: the held point, else the selected thread. */
+	/** Delete / Backspace: the held point of the selected line, else the
+	 *  selected line, thread or hexes (undoable, all of them). */
 	private deleteKey(): boolean {
 		const editor = this.editor;
 		if (!editor) return false;
-		if (this.selectedLine && this.heldPoint !== null) {
-			const alive = editor.removeLinePoint(this.selectedLine.kind, this.selectedLine.id, this.heldPoint);
-			if (alive) this.heldPoint = null;
-			else this.selectLine(null);
+		const line = this.selectedLine;
+		if (line) {
+			if (this.heldPoint !== null && editor.removeLinePoint(line.kind, line.id, this.heldPoint)) this.heldPoint = null;
+			else {
+				if (this.heldPoint === null) editor.removeLine(line.kind, line.id);
+				this.selectLine(null);
+			}
 			this.canvas.paintOverlay();
 			return false;
 		}
@@ -2471,6 +2480,31 @@ export class MapView extends ItemView {
 		const ro = editor.readOnly;
 		const name = line.kind === 'river' ? 'river' : (editor.model.routes.get(line.id)?.kind ?? 'route');
 		const menu = new Menu();
+		const river = line.kind === 'river' ? editor.model.rivers.get(line.id) : undefined;
+		if (river) {
+			// Width (Flutter's river menu "Width…"): presets, or exact.
+			menu.addItem((i) => i.setTitle('Width').setIsLabel(true));
+			for (const [label, w] of RIVER_WIDTH_PRESETS) {
+				menu.addItem((i) =>
+					i
+						.setTitle(label)
+						.setChecked(river.width === w)
+						.setDisabled(ro)
+						.onClick(() => {
+							editor.setRiverWidth(line.id, w);
+							editor.undo.breakMerge(); // each pick its own undo step
+						}),
+				);
+			}
+			menu.addItem((i) =>
+				i
+					.setTitle(`Exact width… (${river.width.toFixed(2)})`)
+					.setIcon('ruler')
+					.setDisabled(ro)
+					.onClick(() => new RiverWidthModal(this.app, () => editor.model.rivers.get(line.id)?.width ?? null, (w) => editor.setRiverWidth(line.id, w), () => editor.undo.breakMerge()).open()),
+			);
+			menu.addSeparator();
+		}
 		menu.addItem((i) =>
 			i
 				.setTitle('Delete point here')
@@ -2480,7 +2514,7 @@ export class MapView extends ItemView {
 					if (!editor.removeLinePoint(line.kind, line.id, point)) this.selectLine(null);
 				}),
 		);
-		menu.addItem((i) => i.setTitle('Edit in the map panel').setIcon('panel-right').onClick(() => void this.panel.toggle()));
+		if (!river) menu.addItem((i) => i.setTitle('Edit in the map panel').setIcon('panel-right').onClick(() => void this.panel.toggle()));
 		menu.addSeparator();
 		menu.addItem((i) =>
 			i

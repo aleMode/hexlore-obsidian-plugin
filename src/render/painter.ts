@@ -145,6 +145,54 @@ interface Cell {
 	look: CellLook;
 }
 
+/** A biome stamp, glyph or procedural, in the ink derived from the fill.
+ *  Exported for the brush palette's previews (view/pick_preview.ts). */
+export function paintBiomeStamp(c: CanvasRenderingContext2D, stamp: Stamp | null, cx: number, cy: number, fill: string, scale: number): void {
+	if (!stamp) return;
+	const y = cy + R * SPEC.stampCentreOffset;
+	const size = R * SPEC.terrainStampScale;
+	if (stamp.kind === 'glyph') {
+		paintGlyph(c, stamp.table, stamp.glyph, cx, y, size, fill);
+		return;
+	}
+	const ink = SPEC.inkFor(fill);
+	c.save();
+	c.translate(cx, y);
+	c.strokeStyle = ink;
+	c.fillStyle = ink;
+	// At least one screen px, as player.js's Math.max(1, …).
+	c.lineWidth = Math.max(1 / scale, size * SPEC.stampStrokeRatio);
+	c.lineCap = 'round';
+	c.lineJoin = 'round';
+	stamp.draw(c, size);
+	c.restore();
+}
+
+/** Halo in the hex's own fill, then the ink: a silhouette that separates
+ *  from terrain of similar value without tinting it (_drawGlyph). */
+export function paintGlyph(c: CanvasRenderingContext2D, table: GlyphTable, g: Glyph, x: number, y: number, size: number, fill: string): void {
+	const [s, tx, ty] = table.transform(g, size);
+	const ink = SPEC.inkFor(fill);
+	const path = table.path(g);
+	c.save();
+	c.translate(x + tx, y + ty);
+	c.scale(s, s);
+	const inkWidth = g.outline ? GLYPH_OUTLINE_WIDTH : 0;
+	c.strokeStyle = fill;
+	c.lineWidth = (GLYPH_HALO_WIDTH + inkWidth) / s;
+	c.lineJoin = 'round';
+	c.stroke(path);
+	if (g.outline) {
+		c.strokeStyle = ink;
+		c.lineWidth = inkWidth / s;
+		c.stroke(path);
+	} else {
+		c.fillStyle = ink;
+		c.fill(path);
+	}
+	c.restore();
+}
+
 export class MapPainter {
 	private labelFits = new Map<string, string>();
 
@@ -237,9 +285,9 @@ export class MapPainter {
 				}
 				if (h.feature) {
 					const g = ART.featureGlyph(h.feature, h.featureVariant);
-					if (g) this.paintGlyph(c, g.table, g.glyph, cell.cx, cell.cy + R * SPEC.stampCentreOffset, R * SPEC.featureStampScale, cell.look.base);
+					if (g) paintGlyph(c, g.table, g.glyph, cell.cx, cell.cy + R * SPEC.stampCentreOffset, R * SPEC.featureStampScale, cell.look.base);
 				} else if (cell.look.painted) {
-					this.paintBiomeStamp(c, ART.biomeStamp(h.terrain, h.terrainVariant), cell.cx, cell.cy, cell.look.base, p.scale);
+					paintBiomeStamp(c, ART.biomeStamp(h.terrain, h.terrainVariant), cell.cx, cell.cy, cell.look.base, p.scale);
 				}
 			}
 		}
@@ -564,53 +612,6 @@ export class MapPainter {
 			c.lineWidth = (ill ? TEX.illustratedEdgeBoundaryWidth : SPEC.edgeBoundaryWidth) / p.scale;
 			c.stroke(boundary);
 		}
-	}
-
-	/** A biome stamp, glyph or procedural, in the ink derived from the fill. */
-	private paintBiomeStamp(c: CanvasRenderingContext2D, stamp: Stamp | null, cx: number, cy: number, fill: string, scale: number): void {
-		if (!stamp) return;
-		const y = cy + R * SPEC.stampCentreOffset;
-		const size = R * SPEC.terrainStampScale;
-		if (stamp.kind === 'glyph') {
-			this.paintGlyph(c, stamp.table, stamp.glyph, cx, y, size, fill);
-			return;
-		}
-		const ink = SPEC.inkFor(fill);
-		c.save();
-		c.translate(cx, y);
-		c.strokeStyle = ink;
-		c.fillStyle = ink;
-		// At least one screen px, as player.js's Math.max(1, …).
-		c.lineWidth = Math.max(1 / scale, size * SPEC.stampStrokeRatio);
-		c.lineCap = 'round';
-		c.lineJoin = 'round';
-		stamp.draw(c, size);
-		c.restore();
-	}
-
-	/** Halo in the hex's own fill, then the ink: a silhouette that separates
-	 *  from terrain of similar value without tinting it (_drawGlyph). */
-	private paintGlyph(c: CanvasRenderingContext2D, table: GlyphTable, g: Glyph, x: number, y: number, size: number, fill: string): void {
-		const [s, tx, ty] = table.transform(g, size);
-		const ink = SPEC.inkFor(fill);
-		const path = table.path(g);
-		c.save();
-		c.translate(x + tx, y + ty);
-		c.scale(s, s);
-		const inkWidth = g.outline ? GLYPH_OUTLINE_WIDTH : 0;
-		c.strokeStyle = fill;
-		c.lineWidth = (GLYPH_HALO_WIDTH + inkWidth) / s;
-		c.lineJoin = 'round';
-		c.stroke(path);
-		if (g.outline) {
-			c.strokeStyle = ink;
-			c.lineWidth = inkWidth / s;
-			c.stroke(path);
-		} else {
-			c.fillStyle = ink;
-			c.fill(path);
-		}
-		c.restore();
 	}
 
 	/** A feature as an object on the ground: a soft shadow, then the
