@@ -33,6 +33,7 @@
 		"esbuild@0.28.2": true
 	},
 	"dependencies": {
-		"pdf-lib": "1.17.1"
+		"pdf-lib": "1.17.1",
+		"perfect-freehand": "1.2.2"
 	}
 }

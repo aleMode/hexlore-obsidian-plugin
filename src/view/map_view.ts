@@ -6,7 +6,7 @@
 // Camera and display choices are per device (§1.2): they live in the vault's
 // local storage, never in a synced file.
 
-import { ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
+import { FuzzySuggestModal, ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
 import { nearestAnchor } from '../core/anchors';
 import { axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
 import { fitPaste, topLeftCell } from '../core/hex_clipboard';
@@ -39,6 +39,9 @@ import type { StoreRegistry } from '../storage/store_registry';
 import { hexesByNote, hexesOfNote } from './vault_notes';
 import { PLAYERS_EVENT } from '../server/control';
 import { ImageExportModal } from './image_export_modal';
+import { HexifyModal } from './hexify_modal';
+import { SKETCH_TOOLS, SketchMode } from './sketch_mode';
+import { TRACE_CONFIG, initialTrace, readTraceConfig, writeTraceConfig, type TraceImage } from './trace_image';
 import { playersSceneData } from '../render/players_scene';
 import { filterCampaignForPlayer } from '../core/player_filter';
 import { toPlain, type JsonObject } from '../core/json';
@@ -206,6 +209,11 @@ export class MapView extends ItemView {
 	 *  and the ones a hovered note in the sections list stands for. */
 	private noteHighlight: { name: string; ids: Set<string> } | null = null;
 	private hoverHighlight: Set<string> | null = null;
+	/** The Sketch view: a mode of this view, sharing its camera (item 2.8). */
+	sketchMode!: SketchMode;
+	private sketchAction: HTMLElement | null = null;
+	private trace: TraceImage | null = null;
+	private traceSaveTimer = 0;
 	/** Closed: the panel must stop showing this view. */
 	closed = false;
 
@@ -266,7 +274,10 @@ export class MapView extends ItemView {
 
 		const display = this.loadDisplay();
 		this.canvas.setStyle(display.style, display.blend);
-		this.canvas.onCameraChange = () => this.saveCameraSoon();
+		this.canvas.onCameraChange = () => {
+			this.saveCameraSoon();
+			this.sketchMode?.schedule();
+		};
 		this.canvas.overlayPainter = (f) => this.paintOverlay(f);
 		this.stage.tabIndex = 0; // takes keyboard focus, so the view's keys work
 
@@ -314,6 +325,23 @@ export class MapView extends ItemView {
 			},
 		});
 		this.wireKeys();
+		this.sketchMode = new SketchMode({
+			app: this.app,
+			stage: this.stage,
+			canvas: this.canvas,
+			editor: () => this.editor,
+			grid: () => this.editor?.model.meta.grid ?? this.data?.grid ?? null,
+			mapScale: () => this.editor?.model.meta.scale ?? MapScale.defaults,
+			spaceDown: () => this.spaceDown,
+			trace: () => this.trace,
+			traceMoved: (t) => this.setTrace(t),
+			askLabel: (initial, done) => new LabelPrompt(this.app, initial, done).open(),
+			changed: () => {
+				this.toolbar.el.toggle(!this.sketchMode.active);
+				this.sketchAction?.toggleClass('is-active', this.sketchMode.active);
+				this.broadcast();
+			},
+		});
 
 		this.addAction('file-text', 'Open as Markdown', () => {
 			if (this.file) this.openAsMarkdown(this.file, this.leaf);
@@ -322,6 +350,7 @@ export class MapView extends ItemView {
 		this.addAction('panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => void this.panel.toggle());
 		this.addAction('library', 'Show or hide the sections (the campaign’s notes, by folder)', () => void this.panel.sections());
 		this.addAction('palette', 'Map style', (evt) => this.styleMenu(evt));
+		this.sketchAction = this.addAction('pencil', 'Sketch view: draw freely over the lattice, then Hexify', () => this.toggleSketch());
 
 		this.wireInput();
 		this.registerEvent(
@@ -366,6 +395,7 @@ export class MapView extends ItemView {
 		const first = !this.canvas.size[0];
 		this.canvas.resize();
 		if (first && this.data) this.restoreCamera();
+		this.sketchMode?.resize();
 	}
 
 	onPaneMenu(menu: Menu, source: string): void {
@@ -721,6 +751,12 @@ export class MapView extends ItemView {
 			this.broadcast();
 			return;
 		}
+		if (e.kind === 'sketch') {
+			this.sketchMode.refreshStrip(); // the colours may have changed
+			this.sketchMode.schedule();
+			this.broadcast();
+			return;
+		}
 		if (!scene || !model) return;
 		const linked = new Set(this.links.keys());
 		switch (e.kind) {
@@ -751,6 +787,7 @@ export class MapView extends ItemView {
 				// A remap or a resize: everything may have moved.
 				this.rebuildScene();
 				this.dropStaleSelection();
+				this.sketchMode.schedule();
 				return;
 			}
 		}
@@ -1010,6 +1047,10 @@ export class MapView extends ItemView {
 		// not be lost (the Flutter canvas learned this the hard way).
 		this.registerDomEvent(el, 'pointerdown', (e) => {
 			el.focus({ preventScroll: true });
+			if (this.sketchMode.active) {
+				this.sketchMode.pointerDown(e);
+				return;
+			}
 			this.toolbar.closePalette();
 			if (e.button === 2) return; // the context menu
 			if (e.button === 1 || (e.button === 0 && this.spaceDown)) {
@@ -1090,6 +1131,10 @@ export class MapView extends ItemView {
 		});
 
 		const end = (e: PointerEvent) => {
+			if (this.sketchMode.active) {
+				this.sketchMode.pointerUp(e);
+				return;
+			}
 			const g = this.gesture;
 			if (!g || g.id !== e.pointerId) return;
 			this.gesture = null;
@@ -1134,6 +1179,10 @@ export class MapView extends ItemView {
 		this.registerDomEvent(el, 'pointercancel', end);
 
 		this.registerDomEvent(el, 'pointermove', (e) => {
+			if (this.sketchMode.active) {
+				this.sketchMode.pointerMove(e);
+				return;
+			}
 			const [sx, sy] = this.local(e);
 			const cell = this.canvas.cellAt(sx, sy);
 			this.hoverScene = this.scenePoint(e);
@@ -1255,6 +1304,7 @@ export class MapView extends ItemView {
 
 		this.registerDomEvent(el, 'contextmenu', (e) => {
 			e.preventDefault();
+			if (this.sketchMode.active) return; // right-drag erases there
 			const [sx, sy] = this.local(e);
 			if (this.tool === 'select') {
 				const hit = this.lineAt(this.scenePoint(e));
@@ -1410,6 +1460,109 @@ export class MapView extends ItemView {
 		this.broadcast();
 	}
 
+	// ----- the Sketch view (item 2.8) -----------------------------------------------------
+
+	toggleSketch(on = !this.sketchMode.active): void {
+		if (on && !this.editor) {
+			new Notice('Sketching needs an editable map.');
+			return;
+		}
+		this.sketchMode.setActive(on);
+		this.selectLine(null);
+		this.canvas.paintOverlay();
+		if (on) void this.loadTrace();
+	}
+
+	hexify(): void {
+		if (!this.editor || this.editor.readOnly) return;
+		new HexifyModal(this.app, this.editor).open();
+	}
+
+	clearSketch(): void {
+		const editor = this.editor;
+		if (!editor || !editor.sketch.items.length) return;
+		new ConfirmPrompt(this.app, 'Clear the sketch', `Remove all ${editor.sketch.items.length} drawn items? Ctrl+Z in the Sketch view brings them back.`, 'Clear', () => editor.clearSketch()).open();
+	}
+
+	/** The trace image as loaded (null when none). */
+	get traceImage(): TraceImage | null {
+		return this.trace;
+	}
+
+	/** Load the trace image: the picture linked from the index, placed by
+	 *  the data folder's trace_image.json. */
+	private async loadTrace(): Promise<void> {
+		if (!this.file) return;
+		const fm = this.app.metadataCache.getFileCache(this.file)?.frontmatter;
+		const link = typeof fm?.['trace-image'] === 'string' ? (fm['trace-image']).replace(/^!?\[\[|\]\]$/g, '') : '';
+		const file = link ? this.app.metadataCache.getFirstLinkpathDest(link.split('|')[0]!, this.file.path) : null;
+		if (!file) {
+			this.trace = null;
+			this.sketchMode.schedule();
+			return;
+		}
+		const path = `${this.dataDir}/${TRACE_CONFIG}`;
+		const text = (await this.app.vault.adapter.exists(path)) ? await this.app.vault.adapter.read(path) : null;
+		const img = await loadImage(this.app.vault.getResourcePath(file)).catch(() => null);
+		if (!img) {
+			new Notice(`The trace image “${file.name}” could not be read.`);
+			return;
+		}
+		const view = this.viewRect();
+		const cfg = (text && readTraceConfig(text)) || initialTrace([view[0], view[1], view[0] + view[2], view[1] + view[3]], img.naturalWidth, img.naturalHeight);
+		this.trace = { ...cfg, image: img };
+		this.sketchMode.schedule();
+		this.broadcast();
+	}
+
+	/** Pick a picture from the vault to trace over. */
+	pickTraceImage(): void {
+		const file = this.file;
+		if (!file) return;
+		new ImagePicker(this.app, async (img) => {
+			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+				fm['trace-image'] = `[[${this.app.metadataCache.fileToLinktext(img, file.path, false)}]]`;
+			});
+			const path = `${this.dataDir}/${TRACE_CONFIG}`;
+			if (await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.remove(path); // a new picture, a new placement
+			// The frontmatter cache updates a moment later.
+			window.setTimeout(() => void this.loadTrace(), 300);
+		}).open();
+	}
+
+	/** Change the trace image's placement or look; saved shortly after. */
+	setTrace(change: Partial<TraceImage>): void {
+		if (!this.trace) return;
+		this.trace = { ...this.trace, ...change };
+		this.sketchMode.schedule();
+		this.broadcast();
+		window.clearTimeout(this.traceSaveTimer);
+		const path = `${this.dataDir}/${TRACE_CONFIG}`;
+		const { image: _image, ...cfg } = this.trace;
+		void _image;
+		this.traceSaveTimer = window.setTimeout(() => void this.app.vault.adapter.write(path, writeTraceConfig(cfg)), 400);
+	}
+
+	/** Stop tracing: the link goes; the picture stays in the vault. */
+	async removeTrace(): Promise<void> {
+		const file = this.file;
+		if (!file) return;
+		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+			delete fm['trace-image'];
+		});
+		const path = `${this.dataDir}/${TRACE_CONFIG}`;
+		if (await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.remove(path);
+		this.trace = null;
+		this.sketchMode.schedule();
+		this.broadcast();
+	}
+
+	private viewRect(): [number, number, number, number] {
+		const [w, h] = this.canvas.size;
+		const cam = this.canvas.camera;
+		return [-cam.ox / cam.scale, -cam.oy / cam.scale, w / cam.scale, h / cam.scale];
+	}
+
 	/** "Export image…" (item 2.10): PNG or PDF, Players or GM. */
 	exportImage(): void {
 		const store = this.store;
@@ -1544,7 +1697,16 @@ export class MapView extends ItemView {
 		this.scope = new Scope(this.app.scope);
 		for (const t of TOOLS) {
 			this.scope.register([], t.key, () => {
+				if (this.sketchMode.active) return false; // the hex view's keys
 				this.setTool(t.id);
+				return false;
+			});
+		}
+		// The Sketch view's letters (decision 19); the hex view has none.
+		for (const t of SKETCH_TOOLS) {
+			this.scope.register([], t.key, () => {
+				if (!this.sketchMode.active) return true;
+				this.sketchMode.setPrefs({ tool: t.id });
 				return false;
 			});
 		}
@@ -1586,16 +1748,20 @@ export class MapView extends ItemView {
 			this.paste();
 			return false;
 		});
+		// Ctrl+Z goes to whichever view is showing: its own history.
 		this.scope.register(['Mod'], 'z', () => {
-			this.undoLast();
+			if (this.sketchMode.active) this.sketchMode.undo();
+			else this.undoLast();
 			return false;
 		});
 		this.scope.register(['Mod', 'Shift'], 'z', () => {
-			this.redoLast();
+			if (this.sketchMode.active) this.sketchMode.redo();
+			else this.redoLast();
 			return false;
 		});
 		this.scope.register(['Mod'], 'y', () => {
-			this.redoLast();
+			if (this.sketchMode.active) this.sketchMode.redo();
+			else this.redoLast();
 			return false;
 		});
 		this.scope.register([], 'F2', () => {
@@ -1604,11 +1770,17 @@ export class MapView extends ItemView {
 			return false;
 		});
 		this.scope.register([], '[', () => {
-			this.setBrush(this.brush - 1);
+			if (this.sketchMode.active) {
+				const w = this.sketchMode.prefs.width;
+				this.sketchMode.setPrefs({ width: w - (w > 8 ? 2 : 1) });
+			} else this.setBrush(this.brush - 1);
 			return false;
 		});
 		this.scope.register([], ']', () => {
-			this.setBrush(this.brush + 1);
+			if (this.sketchMode.active) {
+				const w = this.sketchMode.prefs.width;
+				this.sketchMode.setPrefs({ width: w + (w >= 8 ? 2 : 1) });
+			} else this.setBrush(this.brush + 1);
 			return false;
 		});
 	}
@@ -2266,3 +2438,74 @@ class CreditsModal extends Modal {
 	}
 }
 
+/** An image element for a vault resource URL. */
+function loadImage(src: string): Promise<HTMLImageElement> {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = () => reject(new Error('unreadable image'));
+		img.src = src;
+	});
+}
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']);
+
+/** Pick an image in the vault. */
+class ImagePicker extends FuzzySuggestModal<TFile> {
+	constructor(
+		app: App,
+		private readonly accept: (file: TFile) => void | Promise<void>,
+	) {
+		super(app);
+		this.setPlaceholder('An image to trace over (a scanned map, a screenshot)');
+	}
+
+	getItems(): TFile[] {
+		return this.app.vault.getFiles().filter((f) => IMAGE_EXTENSIONS.has(f.extension.toLowerCase()));
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		void this.accept(file);
+	}
+}
+
+/** A label's text (empty: remove it). */
+class LabelPrompt extends Modal {
+	constructor(
+		app: App,
+		private readonly initial: string,
+		private readonly done: (text: string | null) => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.setTitle(this.initial ? 'Edit label' : 'New label');
+		let value = this.initial;
+		let answered = false;
+		const finish = () => {
+			answered = true;
+			this.close();
+			this.done(value);
+		};
+		new Setting(this.contentEl).setName('Text').setDesc(this.initial ? 'Empty removes the label.' : '').addText((t) => {
+			t.setValue(value).onChange((v) => (value = v));
+			t.inputEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					finish();
+				}
+			});
+			window.setTimeout(() => t.inputEl.select(), 0);
+		});
+		new Setting(this.contentEl).addButton((b) => b.setButtonText('Done').setCta().onClick(finish));
+		this.onClose = () => {
+			this.contentEl.empty();
+			if (!answered) this.done(null);
+		};
+	}
+}

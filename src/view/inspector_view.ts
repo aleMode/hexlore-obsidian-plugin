@@ -11,6 +11,9 @@ import { RIVER_WIDTH_MAX, RIVER_WIDTH_MIN } from '../core/river';
 import type { Cell, LineKind, MapEditor } from '../edit/editor';
 import { ART } from '../render/art';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
+import { Swatch } from '../core/sketch';
+import { TERRAINS, type Terrain } from '../core/hex_data';
+import { toPlain, type JsonObject } from '../core/json';
 import { sectionsOf, updateRegionLinks } from '../storage/index_file';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
 import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
@@ -25,6 +28,13 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const OPEN_KEY = 'hexlore-panel-open';
 const SECONDARY_KEY = 'hexlore-panel-secondary';
+const SWATCHES_KEY = 'hexlore-panel-swatches';
+
+/** A copy of a swatch, unknown keys and values included. */
+function cloneSwatch(s: Swatch): Swatch {
+	const c = Swatch.fromJson(toPlain(s.toJson()) as JsonObject)!;
+	return c;
+}
 
 /** The icon of each kind of note. */
 export const KIND_ICON: Record<NoteKind, string> = { note: 'file-text', place: 'map-pin', npc: 'user', quest: 'scroll' };
@@ -137,6 +147,12 @@ export class InspectorView extends ItemView {
 				.addExtraButton((b) => b.setIcon('x').setTooltip('Clear the highlight').onClick(() => map.clearNoteHighlight()))
 				.settingEl.addClass('hexlore-panel-highlight');
 		}
+		if (editor && this.map.sketchMode.active) {
+			this.renderSketch(editor);
+			this.renderDisplay(state);
+			el.scrollTop = scroll;
+			return;
+		}
 		if (editor) {
 			if (state.selectedLine) this.renderLine(state.selectedLine, state.heldPoint, editor);
 			else if (state.selectedThread) this.renderThread(state.selectedThread, editor);
@@ -168,6 +184,129 @@ export class InspectorView extends ItemView {
 		info.createDiv({ text: `${plural(m.rivers.size, 'river')}, ${plural(m.routes.size, 'road or border', 'roads and borders')}, ${plural(m.threads.size, 'thread')}` });
 		info.createDiv({ text: `${plural(m.revealed.size, 'hex', 'hexes')} revealed to players` });
 		info.createDiv({ text: m.meta.scale.describe() });
+	}
+
+	// ----- the Sketch view (item 2.8) ---------------------------------------------------
+
+	private renderSketch(editor: MapEditor): void {
+		const el = this.contentEl;
+		const map = this.map!;
+		const sk = map.sketchMode;
+		const ro = editor.readOnly;
+		el.createEl('h4', { text: 'Sketch', cls: 'hexlore-panel-hex' }).createSpan({ cls: 'hexlore-panel-coords', text: `  ${plural(editor.sketch.items.length, 'item')}` });
+		el.createDiv({
+			cls: 'setting-item-description',
+			text: 'Draw freely over the lattice. Biome colours become terrain and river, road and trail colours become lines when you Hexify; ink and labels are notes only. Right-drag (or the pen’s eraser end) erases. Ctrl+Z undoes here only.',
+		});
+		new Setting(el)
+			.addButton((b) =>
+				b
+					.setButtonText('Hexify…')
+					.setCta()
+					.setDisabled(ro || !editor.sketch.items.length)
+					.onClick(() => map.hexify()),
+			)
+			.addButton((b) => b.setButtonText('Back to the hex view').onClick(() => map.toggleSketch(false)));
+		new Setting(el).setName('Show the map underneath').addToggle((t) => t.setValue(sk.prefs.showGhost).onChange((v) => sk.setPrefs({ showGhost: v })));
+		new Setting(el).setName('Show the hex lattice').addToggle((t) => t.setValue(sk.prefs.showLattice).onChange((v) => sk.setPrefs({ showLattice: v })));
+		new Setting(el).setName('Filled rectangles and ellipses').addToggle((t) => t.setValue(sk.prefs.filled).onChange((v) => sk.setPrefs({ filled: v })));
+
+		this.renderSwatches(editor);
+
+		this.section('Trace image');
+		const trace = map.traceImage;
+		if (!trace) {
+			new Setting(el)
+				.setDesc('A picture to draw over: a scanned map, a screenshot. It is only a backdrop: turning the sketch into hexes reads your strokes, never the picture.')
+				.addButton((b) =>
+					b
+						.setButtonText('Pick an image…')
+						.setDisabled(ro)
+						.onClick(() => map.pickTraceImage()),
+				);
+		} else {
+			new Setting(el).setName('Opacity').addSlider((s) => s.setLimits(0.05, 1, 0.05).setValue(trace.opacity).onChange((v) => map.setTrace({ opacity: v })));
+			new Setting(el).setName('Shown').addToggle((t) => t.setValue(trace.visible).onChange((v) => map.setTrace({ visible: v })));
+			new Setting(el)
+				.setName('Locked')
+				.setDesc('Unlocked, the pan tool moves it and its corner resizes it.')
+				.addToggle((t) => t.setValue(trace.locked).onChange((v) => map.setTrace({ locked: v })));
+			new Setting(el)
+				.addButton((b) => b.setButtonText('Change…').onClick(() => map.pickTraceImage()))
+				.addButton((b) => b.setButtonText('Remove').onClick(() => void map.removeTrace()));
+		}
+		new Setting(el).addButton((b) =>
+			b
+				.setButtonText('Clear the sketch…')
+				.setDestructive()
+				.setDisabled(ro || !editor.sketch.items.length)
+				.onClick(() => map.clearSketch()),
+		);
+	}
+
+	/** The swatch editor (item 2.8 stage 3): a colour's name, colour and what
+	 *  it MEANS — the biome or line it becomes on Hexify, or ink. */
+	private renderSwatches(editor: MapEditor): void {
+		const details = this.contentEl.createEl('details', { cls: 'hexlore-panel-secondary' });
+		details.open = this.app.loadLocalStorage(SWATCHES_KEY) === true;
+		details.addEventListener('toggle', () => this.app.saveLocalStorage(SWATCHES_KEY, details.open));
+		const doc = editor.sketch;
+		details.createEl('summary', { text: `Colours and what they become (${doc.swatches.length})` });
+		const ro = editor.readOnly;
+		const used = new Set(doc.items.map((it) => (it as { swatchId?: string }).swatchId).filter((x): x is string => !!x));
+		const meaning = (s: Swatch) => (s.kind === 'biome' && s.terrain ? `biome:${s.terrain}` : s.kind);
+		const edit = (i: number, change: (s: Swatch) => void) => {
+			const next = doc.swatches.map((s) => cloneSwatch(s));
+			change(next[i]!);
+			editor.setSketchSwatches(next);
+		};
+		doc.swatches.forEach((s, i) => {
+			const row = new Setting(details);
+			row.settingEl.addClass('hexlore-swatch-row');
+			row.addColorPicker((c) => c.setValue(s.color).setDisabled(ro).onChange((v) => edit(i, (x) => (x.color = v.toUpperCase()))));
+			row.addText((t) => {
+				t.setValue(s.name).setDisabled(ro);
+				t.inputEl.addEventListener('change', () => edit(i, (x) => (x.name = t.getValue().trim() || x.name)));
+			});
+			row.addDropdown((d) => {
+				d.addOption('none', 'Ink (notes only)');
+				for (const t of TERRAINS) if (t !== 'default') d.addOption(`biome:${t}`, `Biome: ${t}`);
+				d.addOption('river', 'River');
+				d.addOption('road', 'Road');
+				d.addOption('trail', 'Trail');
+				d.setValue(meaning(s))
+					.setDisabled(ro)
+					.onChange((v) =>
+						edit(i, (x) => {
+							if (v.startsWith('biome:')) {
+								x.kind = 'biome';
+								x.terrain = v.slice(6) as Terrain;
+							} else {
+								x.kind = v as Swatch['kind'];
+								x.terrain = null;
+							}
+							x.variant = 0;
+						}),
+					);
+			});
+			row.addExtraButton((b) =>
+				b
+					.setIcon('trash-2')
+					.setTooltip(used.has(s.id) ? 'In use: erase what is drawn with it first' : 'Remove this colour')
+					.setDisabled(ro || used.has(s.id) || doc.swatches.length <= 1)
+					.onClick(() => editor.setSketchSwatches(doc.swatches.filter((_, j) => j !== i).map(cloneSwatch), 'Remove colour')),
+			);
+		});
+		new Setting(details).addButton((b) =>
+			b
+				.setButtonText('Add a colour')
+				.setDisabled(ro)
+				.onClick(() => {
+					let n = 1;
+					while (doc.swatch(`custom:${n}`)) n++;
+					editor.setSketchSwatches([...doc.swatches.map(cloneSwatch), new Swatch(`custom:${n}`, `colour ${n}`, '#D4A84A')], 'Add colour');
+				}),
+		);
 	}
 
 	// ----- the player view (item 2.6) -------------------------------------------------
@@ -772,6 +911,14 @@ export class InspectorView extends ItemView {
 			.setName('Hatch unwritten hexes')
 			.setDesc('Hexes with no name yet. Players never see it.')
 			.addToggle((t) => t.setValue(d.gmFog).onChange((v) => map.setDisplay({ gmFog: v })));
+		new Setting(details).setName('Sketch over the map').addDropdown((dd) =>
+			dd
+				.addOption('none', 'Hidden')
+				.addOption('full', 'Faint, everything')
+				.addOption('labels', 'Labels only')
+				.setValue(map.sketchMode.prefs.overlay)
+				.onChange((v) => map.sketchMode.setPrefs({ overlay: v === 'full' || v === 'labels' ? v : 'none' })),
+		);
 		new Setting(details)
 			.setName('Player badges')
 			.setDesc('An eye on revealed hexes, a slashed ring on secret features.')

@@ -21,6 +21,8 @@ import { Route } from '../core/route';
 import { Thread, type ThreadDirection, type ThreadStatus, type ThreadType } from '../core/thread';
 import { LAYER_FILES } from '../storage/map_codec';
 import { UndoStack } from './undo';
+import { HexifyRecord, SketchDocument, SketchFill, type SketchItem, type Swatch } from '../core/sketch';
+import type { ImportOutcome, ImportPlan } from '../core/import_plan';
 import { HexClipboard, copyHexName, pastedHex } from '../core/hex_clipboard';
 import { applyCellRemap, canMoveCells, explodeTransform, hexesOutsideAfter, moveTransform, populatedCentroid, requiredWindow, type CellTransform, type RemapResult } from '../core/remap';
 import { cellInGrid as inWindow, type GridWindow } from '../core/geometry';
@@ -43,7 +45,9 @@ export type EditorEvent =
 	/** The hex → notes links changed. */
 	| { kind: 'links' }
 	/** Undo / redo availability changed. */
-	| { kind: 'history' };
+	| { kind: 'history' }
+	/** The sketch changed (items, or its own history). */
+	| { kind: 'sketch' };
 
 export type LineKind = 'river' | 'route';
 
@@ -73,6 +77,9 @@ export interface ClipboardEntry {
 
 export class MapEditor {
 	readonly undo = new UndoStack();
+	/** The sketch's OWN history (decision 19): Ctrl+Z in the sketch never
+	 *  undoes a map edit nobody can see, and the reverse. */
+	readonly sketchUndo = new UndoStack();
 	private readonly listeners = new Set<(e: EditorEvent) => void>();
 	/** The stroke in progress: cell key → [the hex before its first change,
 	 *  the hex now] (null: no record). Whole-hex snapshots, so undo restores
@@ -1089,6 +1096,262 @@ export class MapEditor {
 	}
 
 	// ----- history ----------------------------------------------------------------
+
+	// ----- import / hexify (decisions 12b, 19) ------------------------------------------------
+
+	/** Execute an import plan: ONE undo entry for paint, tags, lines, the grid
+	 *  window and (Hexify) the record of what it wrote. */
+	applyImport(plan: ImportPlan, recordHexify = false): ImportOutcome {
+		const outcome: ImportOutcome = { applied: 0, cleared: 0, skippedOutside: plan.skippedOutside, skippedOccupied: plan.skippedOccupied, resized: !!plan.window, riversAdded: 0, routesAdded: 0 };
+		if (this.readOnly) return outcome;
+		const m = this.model;
+		const ids = new Set<string>([...plan.clears.map(([q, r]) => hexIdFor(q, r)), ...plan.writes.map((c) => hexIdFor(c.q, c.r))]);
+		const before = new Map([...ids].map((id) => [id, m.hexes.get(id)?.copy() ?? null] as const));
+		const gridBefore = { ...m.meta.grid };
+		const recordBefore = m.hexified ? HexifyRecord.fromJson(m.hexified.toJson()) : null;
+		for (const [q, r] of plan.clears) {
+			const h = m.getHex(q, r);
+			if (!h || (h.terrain === 'default' && !h.feature && !h.colorOverride && !h.hasUnknownFeature)) continue;
+			h.terrain = 'default';
+			h.terrainVariant = 0;
+			h.feature = null;
+			h.featureVariant = 0;
+			h.colorOverride = null;
+			outcome.cleared++;
+		}
+		const record = new HexifyRecord();
+		for (const cell of plan.writes) {
+			const h = m.getHex(cell.q, cell.r)?.copy() ?? new Hex(cell.q, cell.r);
+			const pick = cell.pick;
+			const keepsFeature = !pick.paintsFeature && !plan.clearFeatures;
+			if (pick.terrain !== null) {
+				h.terrain = pick.terrain;
+				h.terrainVariant = pick.terrainVariant;
+			}
+			if (!keepsFeature) {
+				h.feature = pick.feature;
+				h.featureVariant = pick.feature ? pick.featureVariant : 0;
+			}
+			if (pick.paintsBiome || plan.clearFeatures) h.colorOverride = null;
+			h.tags = [...new Set([...h.tags, ...(cell.tags ?? [])])];
+			const old = m.hexes.get(h.id);
+			if (old && encodeCompact(old.toJson()) === encodeCompact(h.toJson())) {
+				if (pick.terrain !== null) record.cells.set(`${h.q},${h.r}`, [h.terrain, h.terrainVariant]);
+				continue;
+			}
+			if (h.hasPersistentContent) m.hexes.set(h.id, h);
+			outcome.applied++;
+			if (pick.terrain !== null) record.cells.set(`${h.q},${h.r}`, [h.terrain, h.terrainVariant]);
+		}
+		// A re-hexify first removes the chains ITS previous run made.
+		const removedRivers = plan.removeRivers.map((id) => m.rivers.get(id)).filter((r): r is River => !!r).map((r) => r.copy());
+		const removedRoutes = plan.removeRoutes.map((id) => m.routes.get(id)).filter((r): r is Route => !!r).map((r) => r.copy());
+		for (const r of removedRivers) m.rivers.delete(r.id);
+		for (const r of removedRoutes) m.routes.delete(r.id);
+		const createdRivers: River[] = [];
+		for (const line of plan.rivers) {
+			if (line.nodes.length < 2) continue;
+			const r = new River(m.nextId('river'));
+			r.nodes = line.nodes.map((n) => ({ ...n }));
+			r.width = line.width;
+			m.rivers.set(r.id, r);
+			createdRivers.push(r.copy());
+		}
+		const createdRoutes: Route[] = [];
+		for (const line of plan.routes) {
+			if (line.nodes.length < 2) continue;
+			const r = new Route(m.nextId('route'));
+			r.nodes = line.nodes.map((n) => ({ ...n }));
+			r.kind = line.kind;
+			r.width = line.width;
+			r.playerVisible = line.kind !== 'border';
+			m.routes.set(r.id, r);
+			createdRoutes.push(r.copy());
+		}
+		outcome.riversAdded = createdRivers.length;
+		outcome.routesAdded = createdRoutes.length;
+		if (plan.window) {
+			Object.assign(m.meta, { gridMinQ: plan.window.minQ, gridCols: plan.window.cols, gridRows: plan.window.rows, gridRShift: plan.window.rShift });
+		}
+		if (recordHexify) {
+			record.rivers = createdRivers.map((r) => r.id);
+			record.routes = createdRoutes.map((r) => r.id);
+			m.hexified = record;
+		}
+		const after = new Map([...ids].map((id) => [id, m.hexes.get(id)?.copy() ?? null] as const));
+		const gridAfter = { ...m.meta.grid };
+		const recordAfter = m.hexified ? HexifyRecord.fromJson(m.hexified.toJson()) : null;
+		const cells = [...ids].map((id) => {
+			const mm = /^q(-?\d+)_r(-?\d+)$/.exec(id)!;
+			return [Number(mm[1]), Number(mm[2])] as Cell;
+		});
+		const restore = (hexes: Map<string, Hex | null>, removeRivers: River[], addRivers: River[], removeRoutes: Route[], addRoutes: Route[], grid: typeof gridBefore, rec: HexifyRecord | null) => {
+			for (const [id, h] of hexes) {
+				if (h) m.hexes.set(id, h.copy());
+				else m.hexes.delete(id);
+			}
+			// Removals before creations (and undo the reverse): a replaced
+			// river and its replacement can share an id.
+			for (const r of removeRivers) m.rivers.delete(r.id);
+			for (const r of removeRoutes) m.routes.delete(r.id);
+			for (const r of addRivers) m.rivers.set(r.id, r.copy());
+			for (const r of addRoutes) m.routes.set(r.id, r.copy());
+			Object.assign(m.meta, { gridMinQ: grid.minQ, gridCols: grid.cols, gridRows: grid.rows, gridRShift: grid.rShift });
+			if (recordHexify) m.hexified = rec ? HexifyRecord.fromJson(rec.toJson()) : null;
+			this.importChanged(cells, recordHexify);
+		};
+		this.importChanged(cells, recordHexify);
+		const touches = new Set<string>([...cells.map(([q, r]) => chunkPath(q, r)), LAYER_FILES.rivers, LAYER_FILES.routes, LAYER_FILES.meta, ...(recordHexify ? [LAYER_FILES.hexified] : [])]);
+		this.undo.push({
+			label: recordHexify ? 'Hexify' : 'Import',
+			touches,
+			run: () => restore(after, removedRivers, createdRivers, removedRoutes, createdRoutes, gridAfter, recordAfter),
+			undo: () => restore(before, createdRivers, removedRivers, createdRoutes, removedRoutes, gridBefore, recordBefore),
+		});
+		this.pushed();
+		return outcome;
+	}
+
+	private importChanged(cells: Cell[], record: boolean): void {
+		for (const [q, r] of cells) this.store.markHex(q, r);
+		this.store.markLayer('rivers');
+		this.store.markLayer('routes');
+		this.store.markLayer('meta');
+		if (record) this.store.markLayer('hexified');
+		this.emit({ kind: 'all' });
+	}
+
+	// ----- the sketch (decision 19), with its own history -----------------------------------
+
+	/** The sketch document, made on first use. */
+	get sketch(): SketchDocument {
+		if (!this.model.sketch) this.model.sketch = new SketchDocument();
+		return this.model.sketch;
+	}
+
+	private sketchChanged(): void {
+		this.store.markLayer('sketch');
+		this.emit({ kind: 'sketch' });
+	}
+
+	/** Put [items] at [positions] (or remove them): the primitive every
+	 *  sketch command and its undo is made of. */
+	private pushSketch(label: string, apply: () => void, revert: () => void): void {
+		apply();
+		this.sketchChanged();
+		this.sketchUndo.push({
+			label,
+			touches: new Set([LAYER_FILES.sketch]),
+			run: () => {
+				apply();
+				this.sketchChanged();
+			},
+			undo: () => {
+				revert();
+				this.sketchChanged();
+			},
+		});
+		this.emit({ kind: 'history' });
+	}
+
+	/** Add an item on top. */
+	addSketchItem(item: SketchItem): void {
+		if (this.readOnly) return;
+		const items = this.sketch.items;
+		this.pushSketch(
+			'Draw',
+			() => items.push(item),
+			() => {
+				const i = items.indexOf(item);
+				if (i >= 0) items.splice(i, 1);
+			},
+		);
+	}
+
+	/** A bucket fill goes BELOW every non-fill and above older fills: the
+	 *  outlines stay visible, and the newer fill wins for Hexify. */
+	addSketchFill(fill: SketchFill): void {
+		if (this.readOnly) return;
+		const items = this.sketch.items;
+		this.pushSketch(
+			'Fill',
+			() => {
+				let at = 0;
+				while (at < items.length && items[at] instanceof SketchFill) at++;
+				items.splice(at, 0, fill);
+			},
+			() => {
+				const i = items.indexOf(fill);
+				if (i >= 0) items.splice(i, 1);
+			},
+		);
+	}
+
+	removeSketchItem(id: string): SketchItem | null {
+		if (this.readOnly) return null;
+		const items = this.sketch.items;
+		const item = items.find((it) => it.id === id);
+		if (!item) return null;
+		let at = items.indexOf(item);
+		this.pushSketch(
+			'Erase',
+			() => {
+				at = items.indexOf(item);
+				if (at >= 0) items.splice(at, 1);
+			},
+			() => items.splice(Math.min(at, items.length), 0, item),
+		);
+		return item;
+	}
+
+	/** Replace an item in place (a label's text): [next] takes its slot. */
+	replaceSketchItem(id: string, next: SketchItem, label = 'Edit label'): void {
+		if (this.readOnly) return;
+		const items = this.sketch.items;
+		const old = items.find((it) => it.id === id);
+		if (!old) return;
+		const swap = (from: SketchItem, to: SketchItem) => {
+			const i = items.indexOf(from);
+			if (i >= 0) items[i] = to;
+		};
+		this.pushSketch(label, () => swap(old, next), () => swap(next, old));
+	}
+
+	/** Replace the swatch palette (the swatch editor): one sketch undo step.
+	 *  [swatches] are new objects; the old ones come back on undo. */
+	setSketchSwatches(swatches: Swatch[], label = 'Edit colours'): void {
+		if (this.readOnly) return;
+		const list = this.sketch.swatches;
+		const before = [...list];
+		this.pushSketch(
+			label,
+			() => list.splice(0, list.length, ...swatches),
+			() => list.splice(0, list.length, ...before),
+		);
+	}
+
+	clearSketch(): void {
+		if (this.readOnly || !this.sketch.items.length) return;
+		const items = this.sketch.items;
+		const all = [...items];
+		this.pushSketch(
+			'Clear sketch',
+			() => items.splice(0, items.length),
+			() => items.splice(0, items.length, ...all),
+		);
+	}
+
+	sketchUndoLast(): string | null {
+		const label = this.sketchUndo.undo();
+		if (label) this.emit({ kind: 'history' });
+		return label;
+	}
+
+	sketchRedoLast(): string | null {
+		const label = this.sketchUndo.redo();
+		if (label) this.emit({ kind: 'history' });
+		return label;
+	}
 
 	undoLast(): string | null {
 		const label = this.undo.undo();

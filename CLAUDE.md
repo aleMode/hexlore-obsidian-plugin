@@ -162,6 +162,24 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   payload, never the model — the secrecy test asserts on that data), and
   `view/image_export_modal.ts` (the options; the file lands beside the map
   in the vault and opens).
+- The Sketch view (item 2.8, decisions 19 / 24) is a MODE of the map view
+  (`view/sketch_mode.ts`): the same camera, a canvas of its own over the
+  map's, and the map below dimmed to 35 % as the hex ghost (the shared
+  renderer). Tools P E B L R O T H, `[`/`]` width; raw pointer events with
+  `getCoalescedEvents`, a `desynchronized` 2D context, pen pressure as the
+  pen reports it (a pen reporting none gets a hint), right-drag / the
+  eraser end erase. Strokes are perfect-freehand OUTLINES (the JS library,
+  MIT; `size = 0.65·width`, `thinning = 7/13`, `streamline = 0.3`, as
+  Flutter). The sketch has its OWN history (`editor.sketchUndo`; Ctrl+Z
+  goes to the view showing). Bucket fill goes UNDER every non-fill.
+  Hexify (`view/hexify_modal.ts`) = `sketch/hexify.ts` → `core/import_plan.ts`
+  (Flutter's import_plan.dart) → `editor.applyImport` (ONE undo step,
+  removals before creations, the `HexifyRecord`). The trace image
+  (`view/trace_image.ts`) is a vault image linked from the index
+  (`trace-image:`), placed by Flutter's own `sketch/trace_image.json`;
+  display state, never undoable. The swatch editor (stage 3) is in the map
+  panel. "Sketch over the map" (Display) shows it in the hex view faintly,
+  or its labels only.
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane

@@ -580,3 +580,85 @@
 	width: 100%;
 	min-width: 22em;
 }
+
+/* --- Item 2.8: the Sketch view ------------------------------------------------- */
+.hexlore-map-stage canvas.hexlore-sketch-canvas {
+	pointer-events: none;
+}
+
+/* Over the hex view: the whole sketch faint, or labels at full strength. */
+.hexlore-sketch-canvas.is-overlay {
+	opacity: 0.45;
+}
+
+.hexlore-sketch-canvas.is-overlay.is-labels-only {
+	opacity: 1;
+}
+
+/* In the Sketch view the map below is the ghost (decision 19). */
+.hexlore-map-stage.is-sketching canvas:not(.hexlore-sketch-canvas) {
+	opacity: 0.35;
+}
+
+.hexlore-map-stage.is-sketching.hide-ghost canvas:not(.hexlore-sketch-canvas) {
+	opacity: 0;
+}
+
+.hexlore-sketch-swatches {
+	display: grid;
+	grid-template-columns: repeat(2, auto);
+	gap: 3px;
+	max-height: 40vh;
+	overflow-y: auto;
+}
+
+.hexlore-sketch-swatch-group {
+	display: contents;
+}
+
+.hexlore-sketch-swatches .hexlore-swatch {
+	cursor: pointer;
+}
+
+.hexlore-sketch-swatches .hexlore-swatch.is-active {
+	outline: 2px solid var(--text-normal);
+	outline-offset: 1px;
+}
+
+.hexlore-sketch-hint {
+	position: absolute;
+	bottom: var(--size-4-8);
+	left: 50%;
+	transform: translateX(-50%);
+	max-width: 80%;
+	padding: var(--size-4-1) var(--size-4-3);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+	z-index: 4;
+}
+
+.hexlore-hexify-tally {
+	margin: var(--size-4-2) 0;
+	color: var(--text-muted);
+}
+
+.hexlore-hexify-tally.mod-warning {
+	color: var(--text-error);
+}
+
+.hexlore-panel .setting-item.hexlore-swatch-row {
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	padding: 2px 0;
+}
+
+.hexlore-swatch-row .setting-item-info {
+	display: none;
+}
+
+.hexlore-swatch-row input[type='text'] {
+	width: 7em !important;
+}
