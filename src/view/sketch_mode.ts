@@ -283,6 +283,13 @@ export class SketchMode {
 		this.pointer = null;
 	}
 
+	/** A pinch took over: drop what is in progress, commit nothing. */
+	abortInput(): void {
+		this.cancel();
+		this.host.stage.removeClass('is-panning');
+		this.schedule();
+	}
+
 	/** Pen eraser end: button 5 / buttons bit 32. */
 	private static isEraser(e: PointerEvent): boolean {
 		return e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0);

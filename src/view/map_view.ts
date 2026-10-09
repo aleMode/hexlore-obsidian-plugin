@@ -1071,8 +1071,80 @@ export class MapView extends ItemView {
 		return null;
 	}
 
+	/** Touch pointers down, for two-finger pinch / pan (phones, tablets). */
+	private touches = new Map<number, [number, number]>();
+	private pinch: { dist: number; cx: number; cy: number } | null = null;
+
+	private pinchState(): { dist: number; cx: number; cy: number } {
+		const [a, b] = [...this.touches.values()] as [[number, number], [number, number]];
+		return { dist: Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1])), cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 };
+	}
+
+	/** Two fingers: pinch zooms about their midpoint, moving them pans. It
+	 *  takes over from whatever the first finger had started. Registered in
+	 *  the CAPTURE phase so the tools never see a pinch. */
+	private wirePinch(el: HTMLElement): void {
+		this.registerDomEvent(
+			el,
+			'pointerdown',
+			(e) => {
+				if (e.pointerType !== 'touch') return;
+				this.touches.set(e.pointerId, this.local(e));
+				if (this.touches.size < 2) return;
+				e.stopImmediatePropagation();
+				if (this.touches.size === 2) {
+					this.abortGesture();
+					this.pinch = this.pinchState();
+				}
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(
+			el,
+			'pointermove',
+			(e) => {
+				if (e.pointerType !== 'touch' || !this.touches.has(e.pointerId)) return;
+				this.touches.set(e.pointerId, this.local(e));
+				if (!this.pinch || this.touches.size < 2) return;
+				e.stopImmediatePropagation();
+				const next = this.pinchState();
+				this.canvas.panBy(next.cx - this.pinch.cx, next.cy - this.pinch.cy);
+				this.canvas.zoomAt(next.cx, next.cy, next.dist / this.pinch.dist);
+				this.pinch = next;
+			},
+			{ capture: true },
+		);
+		const lift = (e: PointerEvent) => {
+			if (e.pointerType !== 'touch' || !this.touches.delete(e.pointerId)) return;
+			if (this.pinch) {
+				// The finger left behind must not become a stroke.
+				e.stopImmediatePropagation();
+				if (this.touches.size < 2) this.pinch = null;
+			}
+		};
+		this.registerDomEvent(el, 'pointerup', lift, { capture: true });
+		this.registerDomEvent(el, 'pointercancel', lift, { capture: true });
+	}
+
+	/** Drop the gesture in progress (a pinch took over): a paint stroke so
+	 *  far stays one undo step; nothing half-placed is committed. */
+	private abortGesture(): void {
+		if (this.sketchMode.active) {
+			this.sketchMode.abortInput();
+			return;
+		}
+		const g = this.gesture;
+		this.gesture = null;
+		if (g?.kind === 'paint') this.editor?.endStroke();
+		if (g?.kind === 'region') this.editor?.endRegionStroke();
+		this.band = null;
+		this.stage.removeClass('is-panning');
+		this.canvas.paintOverlay();
+	}
+
 	private wireInput(): void {
 		const el = this.stage;
+		this.wirePinch(el);
 		// Raw pointer events, never gesture recognisers: trackpad drags must
 		// not be lost (the Flutter canvas learned this the hard way).
 		this.registerDomEvent(el, 'pointerdown', (e) => {

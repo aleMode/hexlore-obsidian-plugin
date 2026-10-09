@@ -231,3 +231,21 @@ describe('the player view control', () => {
 		expect(plugin.players.running).toBe(false);
 	});
 });
+
+describe('touch', () => {
+	it('two fingers pinch-zoom and pan, and paint nothing', async () => {
+		const stage = map.containerEl.querySelector('.hexlore-map-stage') as HTMLElement;
+		const cam = () => ({ ...(map as unknown as { canvas: { camera: { scale: number; ox: number; oy: number } } }).canvas.camera });
+		const touch = (type: string, id: number, x: number, y: number) => stage.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: id, pointerType: 'touch', button: 0, bubbles: true }));
+		const before = cam();
+		const hexes = map.mapState().editor!.model.hexes.size;
+		touch('pointerdown', 1, 100, 100);
+		touch('pointerdown', 2, 200, 100);
+		touch('pointermove', 2, 300, 100); // fingers apart: zoom in
+		touch('pointerup', 2, 300, 100);
+		touch('pointerup', 1, 100, 100);
+		await tick();
+		expect(cam().scale).toBeGreaterThan(before.scale);
+		expect(map.mapState().editor!.model.hexes.size).toBe(hexes);
+	});
+});
