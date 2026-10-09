@@ -506,7 +506,14 @@ export class MenuItem {
 		this.disabled = d;
 		return this;
 	}
-	setChecked(): this {
+	checked: boolean | null = null;
+	isLabel = false;
+	setChecked(c: boolean | null): this {
+		this.checked = c;
+		return this;
+	}
+	setIsLabel(l: boolean): this {
+		this.isLabel = l;
 		return this;
 	}
 	setSection(): this {
@@ -582,6 +589,13 @@ export abstract class FuzzySuggestModal<T> extends Modal {
 	abstract getItems(): T[];
 	abstract getItemText(item: T): string;
 	abstract onChooseItem(item: T, evt?: MouseEvent | KeyboardEvent): void;
+}
+
+export abstract class SuggestModal<T> extends Modal {
+	setPlaceholder(): void {}
+	abstract getSuggestions(query: string): T[] | Promise<T[]>;
+	abstract renderSuggestion(value: T, el: HTMLElement): void;
+	abstract onChooseSuggestion(item: T, evt?: MouseEvent | KeyboardEvent): void;
 }
 
 export class AbstractInputSuggest<T> {

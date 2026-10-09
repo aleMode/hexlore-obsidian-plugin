@@ -5,7 +5,8 @@
 //
 // No Obsidian import: unit-tested directly.
 
-import { cellInGrid } from '../core/geometry';
+import { cellInGrid, cellsInRect, gridPixelBounds } from '../core/geometry';
+import type { MapScale } from '../core/map_scale';
 import { Hex } from '../core/hex';
 import { hexIdFor } from '../core/hex_data';
 import { encodeCompact } from '../core/json';
@@ -1096,6 +1097,33 @@ export class MapEditor {
 	}
 
 	// ----- history ----------------------------------------------------------------
+
+	// ----- map metadata -----------------------------------------------------------------------
+
+	/** What one hex measures (decision 18): one undo step. */
+	setScale(scale: MapScale): void {
+		if (this.readOnly) return;
+		const before = this.model.meta.scale;
+		if (before.hexDistance === scale.hexDistance && before.unit === scale.unit) return;
+		const set = (s: MapScale) => {
+			this.model.meta.scale = s;
+			this.store.markLayer('meta');
+			this.emit({ kind: 'all' });
+		};
+		set(scale);
+		this.undo.push({ label: 'Map scale', touches: new Set([LAYER_FILES.meta]), run: () => set(scale), undo: () => set(before) });
+		this.pushed();
+	}
+
+	/** Every cell of the grid revealed to players, or hidden (Flutter's
+	 *  reveal all / hide all; fog is not undoable, decision 9). */
+	setAllRevealed(reveal: boolean): number {
+		if (this.readOnly) return 0;
+		const g = this.model.meta.grid;
+		const [x, y, w, h] = gridPixelBounds(g);
+		const cells = [...cellsInRect(x, y, x + w, y + h, g)] as Cell[];
+		return this.setRevealed(cells, reveal).length;
+	}
 
 	// ----- import / hexify (decisions 12b, 19) ------------------------------------------------
 

@@ -37,7 +37,14 @@ import { LAYER_FILES as LAYER_PATHS } from '../storage/map_codec';
 import type { MapStore, StoreEvent } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
 import { hexesByNote, hexesOfNote } from './vault_notes';
-import { PLAYERS_EVENT } from '../server/control';
+import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
+import { TopBar } from './top_bar';
+import { MapPicker, NewMapModal, QuickJumpModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
+import { NewNoteModal } from './inspector_view';
+import { createNote, notesInFolder, noteKind, templateFiles } from './vault_notes';
+import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
+import { sectionsOf } from '../storage/index_file';
+import { displayIdFor } from '../core/hex';
 import { ImageExportModal } from './image_export_modal';
 import { HexifyModal } from './hexify_modal';
 import { ImportWizard, UNDERLAY_CONFIG } from './import_wizard';
@@ -219,7 +226,7 @@ export class MapView extends ItemView {
 	private hoverHighlight: Set<string> | null = null;
 	/** The Sketch view: a mode of this view, sharing its camera (item 2.8). */
 	sketchMode!: SketchMode;
-	private sketchAction: HTMLElement | null = null;
+	private topBar: TopBar | null = null;
 	private trace: TraceImage | null = null;
 	private traceSaveTimer = 0;
 	/** Closed: the panel must stop showing this view. */
@@ -240,6 +247,11 @@ export class MapView extends ItemView {
 			exportFlutter: (file: TFile) => void;
 			/** The plugin's folder (the importer's libraries live there). */
 			pluginDir: string;
+			/** The player view (the top bar's players button). */
+			players: PlayerControl;
+			playerLan: () => boolean;
+			setPlayerLan: (on: boolean) => void;
+			templatesFolder: () => string;
 		},
 	) {
 		super(leaf);
@@ -348,7 +360,6 @@ export class MapView extends ItemView {
 			askLabel: (initial, done) => new LabelPrompt(this.app, initial, done).open(),
 			changed: () => {
 				this.toolbar.el.toggle(!this.sketchMode.active);
-				this.sketchAction?.toggleClass('is-active', this.sketchMode.active);
 				this.broadcast();
 			},
 		});
@@ -356,11 +367,9 @@ export class MapView extends ItemView {
 		this.addAction('file-text', 'Open as Markdown', () => {
 			if (this.file) this.openAsMarkdown(this.file, this.leaf);
 		});
-		this.addAction('maximize', 'Fit the map', () => this.canvas.fit());
 		this.addAction('panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => void this.panel.toggle());
 		this.addAction('library', 'Show or hide the sections (the campaign’s notes, by folder)', () => void this.panel.sections());
-		this.addAction('palette', 'Map style', (evt) => this.styleMenu(evt));
-		this.sketchAction = this.addAction('pencil', 'Sketch view: draw freely over the lattice, then Hexify', () => this.toggleSketch());
+		this.buildTopBar(root);
 
 		this.wireInput();
 		this.registerEvent(
@@ -374,7 +383,12 @@ export class MapView extends ItemView {
 			}),
 		);
 		// Player votes come and go: redraw their badges.
-		this.registerEvent((this.app.workspace as Events).on(PLAYERS_EVENT, () => this.canvas.paintOverlay()));
+		this.registerEvent(
+			(this.app.workspace as Events).on(PLAYERS_EVENT, () => {
+				this.canvas.paintOverlay();
+				this.broadcast();
+			}),
+		);
 		// The note being read: highlight the hexes it stands for.
 		this.registerEvent(this.app.workspace.on('file-open', (f) => this.followNote(f)));
 		this.registerEvent(
@@ -647,14 +661,265 @@ export class MapView extends ItemView {
 		}
 	}
 
-	private styleMenu(evt: MouseEvent): void {
-		const d = { style: this.canvas.style, blend: this.canvas.blend };
+	/** Display & overlays (decision 30): display per DEVICE, overlays per MAP. */
+	private displayMenu(evt: MouseEvent): void {
+		const d = this.loadDisplay();
+		const o = this.overlays;
 		const menu = new Menu();
-		menu.addItem((i) => i.setTitle('Clean').setChecked(d.style === 'clean').onClick(() => this.setDisplay({ style: 'clean' })));
-		menu.addItem((i) => i.setTitle('Illustrated').setChecked(d.style === 'illustrated').onClick(() => this.setDisplay({ style: 'illustrated' })));
-		menu.addSeparator();
+		const label = (t: string) => menu.addItem((i) => i.setTitle(t).setIsLabel(true));
+		label('This device, every map');
+		menu.addItem((i) => i.setTitle('Clean style').setChecked(d.style === 'clean').onClick(() => this.setDisplay({ style: 'clean' })));
+		menu.addItem((i) => i.setTitle('Illustrated style').setChecked(d.style === 'illustrated').onClick(() => this.setDisplay({ style: 'illustrated' })));
 		menu.addItem((i) => i.setTitle('Blend biome borders').setChecked(d.blend).onClick(() => this.setDisplay({ blend: !d.blend })));
+		menu.addItem((i) => i.setTitle('Threads as straight ribbons').setChecked(d.threadStyle === 'ribbon').onClick(() => this.setDisplay({ threadStyle: d.threadStyle === 'ribbon' ? 'arc' : 'ribbon' })));
+		menu.addItem((i) => i.setTitle('Hatch unwritten hexes').setChecked(d.gmFog).onClick(() => this.setDisplay({ gmFog: !d.gmFog })));
+		menu.addItem((i) => i.setTitle('Player badges').setChecked(d.badges).onClick(() => this.setDisplay({ badges: !d.badges })));
+		menu.addSeparator();
+		label('This map');
+		menu.addItem((i) => i.setTitle('Threads').setChecked(o.threads).onClick(() => this.setOverlays({ threads: !o.threads })));
+		menu.addItem((i) => i.setTitle('Regions').setChecked(o.regions).onClick(() => this.setOverlays({ regions: !o.regions })));
+		menu.addItem((i) => i.setTitle('Borders').setChecked(o.borders).onClick(() => this.setOverlays({ borders: !o.borders })));
+		if (this.underlay) menu.addItem((i) => i.setTitle('Imported picture underneath').setChecked(o.underlay).onClick(() => this.setOverlays({ underlay: !o.underlay })));
+		const sk = this.sketchMode.prefs.overlay;
+		menu.addItem((i) => i.setTitle('Sketch over the map').setChecked(sk !== 'none').onClick(() => this.sketchMode.setPrefs({ overlay: sk === 'none' ? 'full' : 'none' })));
+		menu.addSeparator();
 		menu.addItem((i) => i.setTitle('More in the map panel…').setIcon('panel-right').onClick(() => void this.panel.toggle()));
+		menu.showAtMouseEvent(evt);
+	}
+
+	// ----- the top bar (decision 30) ------------------------------------------------------
+
+	private buildTopBar(root: HTMLElement): void {
+		const players = this.panel.players;
+		this.topBar = new TopBar(root, {
+			mapName: () => this.file?.basename.replace(/\.hexmap$/, '') ?? (this.state.synthetic ? 'Synthetic 100×100' : ''),
+			hasEditor: () => !!this.editor && !this.editor.readOnly,
+			sketching: () => this.sketchMode.active,
+			setSketching: (on) => this.toggleSketch(on),
+			canUndo: () => (this.sketchMode.active ? !!this.editor?.sketchUndo.canUndo : !!this.editor?.undo.canUndo),
+			canRedo: () => (this.sketchMode.active ? !!this.editor?.sketchUndo.canRedo : !!this.editor?.undo.canRedo),
+			undoLabel: () => (this.sketchMode.active ? this.editor?.sketchUndo.nextUndoLabel : this.editor?.undo.nextUndoLabel) ?? null,
+			redoLabel: () => (this.sketchMode.active ? this.editor?.sketchUndo.nextRedoLabel : this.editor?.undo.nextRedoLabel) ?? null,
+			undo: () => (this.sketchMode.active ? this.sketchMode.undo() : this.undoLast()),
+			redo: () => (this.sketchMode.active ? this.sketchMode.redo() : this.redoLast()),
+			resetView: () => this.canvas.fit(),
+			playersRunning: () => players.serves(this.file),
+			playersUrl: () => players.url,
+			togglePlayers: () => {
+				if (!this.file) return;
+				if (players.serves(this.file)) void players.stop();
+				else void players.start(this.file);
+			},
+			mapMenu: (e) => this.mapMenu(e),
+			quickJump: () => this.quickJump(),
+			adventuresMenu: (e) => this.sectionMenu(e, 'Adventures', 'New adventure…'),
+			notesMenu: (e) => this.sectionMenu(e, 'GM notes', 'New session document…', true),
+			displayMenu: (e) => this.displayMenu(e),
+			playersMenu: (e) => this.playersMenu(e),
+		});
+		root.prepend(this.topBar.el);
+	}
+
+	/** The map menu, labelled with its name (Flutter's campaign menu). */
+	private mapMenu(evt: MouseEvent): void {
+		const ro = !this.editor || this.editor.readOnly;
+		const menu = new Menu();
+		const label = (t: string) => menu.addItem((i) => i.setTitle(t).setIsLabel(true));
+		if (this.file) label(this.file.basename.replace(/\.hexmap$/, ''));
+		menu.addItem((i) => i.setTitle('New map…').setIcon('folder-plus').onClick(() => this.newMap()));
+		menu.addItem((i) =>
+			i
+				.setTitle('Open map…')
+				.setIcon('folder-open')
+				.onClick(() => new MapPicker(this.app, (f) => isMapIndex(this.app, f), (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open()),
+		);
+		menu.addSeparator();
+		label('Map');
+		menu.addItem((i) => i.setTitle('Map scale…').setIcon('ruler').setDisabled(ro).onClick(() => this.scaleDialog()));
+		menu.addItem((i) => i.setTitle('Resize grid…').setIcon('scaling').setDisabled(ro).onClick(() => this.resizeDialog()));
+		menu.addItem((i) => i.setTitle('Explode map…').setIcon('expand').setDisabled(ro).onClick(() => this.explodeDialog()));
+		label('Import');
+		menu.addItem((i) => i.setTitle('Import map image…').setIcon('image-plus').setDisabled(ro).onClick(() => this.importImage()));
+		label('Export');
+		menu.addItem((i) => i.setTitle('Export image (PNG / PDF)…').setIcon('image-down').setDisabled(!this.store).onClick(() => this.exportImage()));
+		menu.addItem((i) =>
+			i
+				.setTitle('Export as a campaign folder…')
+				.setIcon('folder-output')
+				.setDisabled(!this.file || !Platform.isDesktopApp)
+				.onClick(() => this.file && void this.panel.exportFlutter(this.file)),
+		);
+		menu.addSeparator();
+		label('HexLore');
+		menu.addItem((i) => i.setTitle('Stylus diagnostics…').setIcon('pen-tool').onClick(() => new StylusProbeModal(this.app).open()));
+		menu.addItem((i) => i.setTitle('About and credits…').setIcon('info').onClick(() => new CreditsModal(this.app).open()));
+		menu.showAtMouseEvent(evt);
+	}
+
+	private newMap(): void {
+		const folder = this.file?.parent && !this.file.parent.isRoot() ? this.file.parent.path : '';
+		new NewMapModal(this.app, folder, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
+	}
+
+	private scaleDialog(): void {
+		const editor = this.editor;
+		if (!editor) return;
+		new ScaleModal(this.app, editor.model.meta.scale, (s) => editor.setScale(s)).open();
+	}
+
+	/** The notes of one section as a menu (Adventures; Session notes), with
+	 *  "new" and — for notes — the unassigned characters and quests. */
+	private sectionMenu(evt: MouseEvent, sectionName: string, newLabel: string, withUnassigned = false): void {
+		const index = this.file;
+		if (!index) return;
+		const sections = sectionsOf(this.app, index) ?? [...DEFAULT_SECTIONS];
+		const section = sections.find((x) => x.name.toLowerCase() === sectionName.toLowerCase());
+		const menu = new Menu();
+		menu.addItem((i) => i.setTitle(sectionName === 'GM notes' ? 'Session notes' : sectionName).setIsLabel(true));
+		const notes = section ? notesInFolder(this.app, section.folder) : [];
+		if (sectionName === 'Adventures') {
+			const order = (f: TFile) => {
+				const o: unknown = this.app.metadataCache.getFileCache(f)?.frontmatter?.order;
+				return typeof o === 'number' ? o : Infinity;
+			};
+			notes.sort((a, b) => order(a) - order(b) || a.basename.localeCompare(b.basename));
+		}
+		for (const f of notes) menu.addItem((i) => i.setTitle(f.basename).setIcon('file-text').onClick(() => void this.openBeside(f)));
+		if (!notes.length) menu.addItem((i) => i.setTitle(section ? 'None yet' : `No “${sectionName}” section`).setDisabled(true));
+		menu.addItem((i) =>
+			i
+				.setTitle(newLabel)
+				.setIcon('plus')
+				.setDisabled(!section)
+				.onClick(() => section && this.newSectionNote(section, sections)),
+		);
+		if (withUnassigned) {
+			menu.addSeparator();
+			menu.addItem((i) => i.setTitle('Unassigned characters and quests…').setIcon('user-search').onClick(() => this.unassigned()));
+		}
+		menu.showAtMouseEvent(evt);
+	}
+
+	private newSectionNote(section: Section, sections: Section[]): void {
+		const index = this.file;
+		if (!index) return;
+		new NewNoteModal(this.app, {
+			heading: `New note in ${section.name}`,
+			title: '',
+			sections,
+			section: section.name,
+			templates: templateFiles(this.app, this.panel.templatesFolder()),
+			accept: async (choice) => {
+				const file = await createNote(this.app, { ...choice, vars: { title: choice.title, hex: '', map: index.basename.replace(/\.hexmap$/, '') }, location: null });
+				await this.openBeside(file);
+			},
+		}).open();
+	}
+
+	/** Open a note without replacing the map: beside it. */
+	private async openBeside(f: TFile): Promise<void> {
+		await this.app.workspace.getLeaf('split').openFile(f);
+	}
+
+	/** Characters and quests on no hex (Flutter's "Unassigned entities…"). */
+	private unassigned(): void {
+		const byNote = this.hexesByNote();
+		const items: Unassigned[] = [];
+		for (const f of this.app.vault.getMarkdownFiles()) {
+			const k = noteKind(this.app, f);
+			if ((k === 'npc' || k === 'quest') && !hexesOfNote(this.app, f, byNote).size) items.push({ file: f, kind: k });
+		}
+		items.sort((a, b) => a.file.basename.localeCompare(b.file.basename));
+		const only = this.selection.size === 1 ? cellOfKey([...this.selection][0]!) : null;
+		const editor = this.editor;
+		new UnassignedModal(
+			this.app,
+			items,
+			only ? displayIdFor(...only) : null,
+			(f) => void this.openBeside(f),
+			(f) => {
+				if (!only || !editor || !this.file) return;
+				const id = hexIdFor(...only);
+				const link = this.app.metadataCache.fileToLinktext(f, this.file.path, true);
+				const cur = editor.hexNotes(id);
+				if (!cur.includes(link)) editor.setHexNotes(id, [...cur, link], `Link “${f.basename}”`);
+			},
+		).open();
+	}
+
+	/** Quick jump (Ctrl+K): hexes by name, regions, and the notes on the map. */
+	quickJump(): void {
+		const m = this.editor?.model;
+		if (!m || !this.file) return;
+		const entries: JumpTarget[] = [];
+		for (const h of m.hexes.values()) if (h.name) entries.push({ label: h.name, kind: 'hex', hexes: new Set([h.id]), file: null });
+		for (const g of m.regions.values()) if (g.name) entries.push({ label: g.name, kind: 'region', hexes: new Set(g.cells.map(([q, r]) => hexIdFor(q, r))), file: null });
+		const byNote = this.hexesByNote();
+		const seen = new Set<string>();
+		const addNote = (f: TFile) => {
+			if (seen.has(f.path)) return;
+			seen.add(f.path);
+			const k = noteKind(this.app, f);
+			entries.push({ label: f.basename, kind: k === 'note' ? 'note' : k, hexes: hexesOfNote(this.app, f, byNote), file: f });
+		};
+		for (const p of byNote.keys()) {
+			const f = this.app.vault.getAbstractFileByPath(p);
+			if (f instanceof TFile) addNote(f);
+		}
+		for (const f of this.app.vault.getMarkdownFiles()) {
+			const k = noteKind(this.app, f);
+			if (k === 'npc' || k === 'quest') addNote(f);
+		}
+		const sections = sectionsOf(this.app, this.file) ?? [...DEFAULT_SECTIONS];
+		const adv = sections.find((x) => x.name.toLowerCase() === 'adventures');
+		if (adv) for (const f of notesInFolder(this.app, adv.folder)) if (!seen.has(f.path)) entries.push({ label: f.basename, kind: 'adventure', hexes: new Set(), file: f });
+		new QuickJumpModal(this.app, entries, (t) => {
+			if (t.hexes.size) {
+				this.showHexes(t.hexes, t.label);
+				if (t.hexes.size === 1) {
+					const c = cellOfId([...t.hexes][0]!);
+					if (c) this.setSelection([cellKeyOf(c)]);
+				}
+			} else if (t.file) void this.openBeside(t.file);
+		}).open();
+	}
+
+	/** The players split button's menu (Flutter's ▾). */
+	private playersMenu(evt: MouseEvent): void {
+		const players = this.panel.players;
+		const file = this.file;
+		const serving = players.serves(file);
+		const url = players.url;
+		const menu = new Menu();
+		menu.addItem((i) => i.setTitle(serving && url ? `Serving at ${url}` : players.running ? 'Serving another map' : 'Player server stopped').setIsLabel(true));
+		if (serving && url) menu.addItem((i) => i.setTitle('Copy player link').setIcon('copy').onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))));
+		else menu.addItem((i) => i.setTitle('Start the player view').setIcon('cast').setDisabled(!file).onClick(() => file && void players.start(file)));
+		if (serving) menu.addItem((i) => i.setTitle('Stop the player view').setIcon('square').onClick(() => void players.stop()));
+		const lan = this.panel.playerLan();
+		menu.addItem((i) => i.setTitle('Serve on the local network').setChecked(lan).onClick(() => this.panel.setPlayerLan(!lan)));
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle('Fog of war').setIsLabel(true));
+		const ro = !this.editor || this.editor.readOnly;
+		menu.addItem((i) =>
+			i
+				.setTitle('Reveal all hexes to players')
+				.setIcon('eye')
+				.setDisabled(ro)
+				.onClick(() => {
+					const n = this.editor?.setAllRevealed(true) ?? 0;
+					new Notice(`Revealed ${n} hex${n === 1 ? '' : 'es'}.`);
+				}),
+		);
+		menu.addItem((i) =>
+			i
+				.setTitle('Hide all hexes from players')
+				.setIcon('eye-off')
+				.setDisabled(ro)
+				.onClick(() => {
+					const n = this.editor?.setAllRevealed(false) ?? 0;
+					new Notice(`Hid ${n} hex${n === 1 ? '' : 'es'}.`);
+				}),
+		);
 		menu.showAtMouseEvent(evt);
 	}
 
@@ -690,6 +955,7 @@ export class MapView extends ItemView {
 		if (this.broadcastPending) return;
 		this.broadcastPending = this.stage.win.requestAnimationFrame(() => {
 			this.broadcastPending = 0;
+			this.topBar?.refresh();
 			this.app.workspace.trigger(MAP_STATE_EVENT, this);
 		});
 	}
@@ -1929,6 +2195,14 @@ export class MapView extends ItemView {
 		this.scope.register(['Mod'], 'y', () => {
 			if (this.sketchMode.active) this.sketchMode.redo();
 			else this.redoLast();
+			return false;
+		});
+		this.scope.register(['Mod'], 'k', () => {
+			this.quickJump();
+			return false;
+		});
+		this.scope.register(['Mod'], '0', () => {
+			this.canvas.fit();
 			return false;
 		});
 		this.scope.register([], 'F2', () => {

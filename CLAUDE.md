@@ -104,7 +104,12 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   map share one history.
 - `src/view/map_view.ts` — the `.hexmap.md` map view: tools (1–8, decision
   6), selection, context menu, keys (view `Scope`); `toolbar.ts` is the
-  tool strip + paint palette (derived from the art registry);
+  tool strip + paint palette (derived from the art registry); `top_bar.ts`
+  mirrors Flutter's title bar (decision 30: left = the map menu, quick jump
+  Ctrl+K, adventures, session notes; centre = Hex | Sketch; right = undo /
+  redo, reset view Ctrl+0, Display & overlays, the players split button),
+  its dialogs in `map_menus.ts` — keep its menus and entries in step with
+  Flutter's;
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
   map). `main.ts` switches a Markdown leaf on an index to the map view
   ("Open as Markdown" to go back).

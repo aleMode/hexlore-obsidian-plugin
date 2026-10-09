@@ -55,3 +55,14 @@ describe('section templates', () => {
 		expect(sectionOf(s, 'Placesque/x.md')).toBeNull();
 	});
 });
+
+describe('quick jump ranking (Flutter’s rankEntries)', async () => {
+	const { rankEntries } = await import('../src/core/quick_jump');
+	const e = (label: string) => ({ label, kind: 'hex' });
+	it('exact, prefix, word start, substring; alphabetical within a tier', () => {
+		const all = [e('Old Mill'), e('Mill'), e('Millstone'), e('Windmill'), e('Ford')];
+		expect(rankEntries('mill', all).map((x) => x.label)).toEqual(['Mill', 'Millstone', 'Old Mill', 'Windmill']);
+		expect(rankEntries('', all).map((x) => x.label)).toEqual(['Ford', 'Mill', 'Millstone', 'Old Mill', 'Windmill']);
+		expect(rankEntries('zzz', all)).toEqual([]);
+	});
+});

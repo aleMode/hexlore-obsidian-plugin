@@ -31,6 +31,13 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				votes: (file) => this.players.voteCounts(file),
 				exportFlutter: (file) => void exportToFlutter(this.app, this.stores, file),
 				pluginDir: this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
+				players: this.players,
+				playerLan: () => this.settings.playerLan,
+				setPlayerLan: (on) => {
+					this.settings.playerLan = on;
+					void this.players.lanChanged();
+				},
+				templatesFolder: () => this.settings.templatesFolder,
 			}));
 		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));

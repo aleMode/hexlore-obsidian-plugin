@@ -1,14 +1,18 @@
 /* HexLore plugin styles. */
 
 .hexlore-map-view {
+	--hexlore-topbar-h: 38px;
 	padding: 0 !important;
 	overflow: hidden;
 	position: relative;
+	display: flex;
+	flex-direction: column;
 }
 
 .hexlore-map-stage {
-	position: absolute;
-	inset: 0;
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
 	overflow: hidden;
 	background: #1a1a2e; /* the map's own background, as the Flutter canvas */
 	touch-action: none;
@@ -58,7 +62,7 @@
 
 .hexlore-map-notice {
 	position: absolute;
-	top: var(--size-4-2);
+	top: calc(var(--hexlore-topbar-h) + var(--size-4-2));
 	left: 50%;
 	transform: translateX(-50%);
 	padding: var(--size-4-1) var(--size-4-3);
@@ -790,4 +794,150 @@
 .hexlore-import-group-controls .setting-item {
 	padding: 2px 0;
 	border-top: none;
+}
+
+/* ----- the top bar (Flutter's title bar, decision 30) ----- */
+
+.hexlore-topbar {
+	flex: 0 0 var(--hexlore-topbar-h);
+	height: var(--hexlore-topbar-h);
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: 0 var(--size-4-2);
+	background: var(--background-secondary);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	user-select: none;
+	min-width: 0;
+}
+
+.hexlore-topbar-group {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+}
+
+.hexlore-topbar-group.is-right {
+	justify-content: flex-end;
+}
+
+.hexlore-topbar-button {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	cursor: var(--cursor);
+	color: var(--text-normal);
+	min-width: 0;
+}
+
+.hexlore-topbar-button:hover {
+	background: var(--background-modifier-hover);
+}
+
+.hexlore-topbar-name {
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 22ch;
+}
+
+.hexlore-topbar-icon,
+.hexlore-topbar-caret {
+	display: flex;
+	color: var(--icon-color);
+}
+
+.hexlore-topbar-caret svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.hexlore-topbar-divider {
+	width: var(--border-width);
+	align-self: stretch;
+	margin: var(--size-4-2) var(--size-2-2);
+	background: var(--background-modifier-border);
+}
+
+.hexlore-topbar-icon-button.is-disabled {
+	opacity: 0.35;
+	cursor: default;
+	pointer-events: none;
+}
+
+.hexlore-topbar-icon-button.is-active {
+	color: var(--interactive-accent);
+}
+
+.hexlore-topbar-switch {
+	display: flex;
+	padding: 2px;
+	border-radius: var(--radius-m);
+	background: var(--background-modifier-form-field);
+	border: var(--border-width) solid var(--background-modifier-border);
+}
+
+.hexlore-topbar-segment {
+	padding: 2px var(--size-4-3);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	cursor: var(--cursor);
+}
+
+.hexlore-topbar-segment:hover {
+	color: var(--text-normal);
+}
+
+.hexlore-topbar-segment.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.hexlore-topbar-segment.is-disabled {
+	opacity: 0.4;
+	pointer-events: none;
+}
+
+.hexlore-topbar-split {
+	display: flex;
+	align-items: center;
+	border-radius: var(--radius-s);
+	border: var(--border-width) solid var(--background-modifier-border);
+}
+
+.hexlore-topbar-split .is-caret {
+	padding-left: 0;
+	padding-right: 2px;
+}
+
+.hexlore-topbar-split .is-caret svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.hexlore-jump-kind {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.hexlore-stylus-pad {
+	height: 220px;
+	margin: var(--size-4-2) 0;
+	border: var(--border-width) dashed var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary-alt);
+	touch-action: none;
+}
+
+.hexlore-stylus-read {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	min-height: 2.5em;
 }

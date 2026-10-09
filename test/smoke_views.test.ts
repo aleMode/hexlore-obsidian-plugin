@@ -218,6 +218,68 @@ describe('the dialogs', () => {
 	});
 });
 
+describe('the top bar (Flutter decision 30)', () => {
+	const bar = () => map.containerEl.querySelector('.hexlore-topbar') as HTMLElement;
+	const button = (sel: string, n = 0) => bar().querySelectorAll<HTMLElement>(sel)[n]!;
+	const menuOf = (el: HTMLElement) => {
+		Menu.last = null;
+		el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		return Menu.last as Menu | null;
+	};
+
+	it('shows the map name and the view switch', () => {
+		expect(bar()).not.toBeNull();
+		expect(bar().querySelector('.hexlore-topbar-name')?.textContent).toBe('Fixture');
+		const segs = bar().querySelectorAll('.hexlore-topbar-segment');
+		expect(Array.from(segs, (s) => s.textContent)).toEqual(['Hex', 'Sketch']);
+		expect(segs[0]!.classList.contains('is-active')).toBe(true);
+	});
+
+	it('the map menu carries the campaign entries', () => {
+		const menu = menuOf(button('.hexlore-topbar-map'));
+		const titles = menu!.items.map((i) => i.title);
+		expect(titles).toEqual(expect.arrayContaining(['New map…', 'Open map…', 'Map scale…', 'Resize grid…', 'Explode map…', 'Import map image…', 'Export image (PNG / PDF)…', 'Stylus diagnostics…', 'About and credits…']));
+		for (const t of ['Map scale…', 'Stylus diagnostics…', 'New map…']) {
+			menu!.choose(t);
+			const m = Modal.open.at(-1)!;
+			expect(m).toBeDefined();
+			m.close();
+		}
+	});
+
+	it('quick jump finds hexes and notes', () => {
+		map.quickJump();
+		const m = Modal.open.at(-1) as unknown as { getSuggestions(q: string): { label: string; kind: string }[]; close(): void };
+		const all = m.getSuggestions('');
+		expect(all.length).toBeGreaterThan(0);
+		expect(all.some((e) => e.label === 'Hermit')).toBe(true);
+		m.close();
+	});
+
+	it('adventures, session notes, display and players menus build', () => {
+		const icons = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button');
+		const titlesOf = (el: HTMLElement) => menuOf(el)?.items.map((i) => i.title) ?? [];
+		// left: search, adventures, notes; right: undo, redo, reset, display, players, players ▾
+		expect(titlesOf(icons[1]!)).toContain('New adventure…');
+		const notes = titlesOf(icons[2]!);
+		expect(notes).toEqual(expect.arrayContaining(['New session document…', 'Unassigned characters and quests…']));
+		expect(titlesOf(icons[6]!)).toEqual(expect.arrayContaining(['Clean style', 'Illustrated style', 'Threads', 'Regions', 'Borders']));
+		expect(titlesOf(icons[8]!)).toEqual(expect.arrayContaining(['Serve on the local network', 'Reveal all hexes to players', 'Hide all hexes from players']));
+		menuOf(icons[2]!)!.choose('Unassigned characters and quests…');
+		Modal.open.at(-1)!.close();
+	});
+
+	it('the Sketch segment switches the view, Hex switches back', async () => {
+		button('.hexlore-topbar-segment', 1).dispatchEvent(new MouseEvent('click'));
+		await tick(20);
+		expect(map.sketchMode.active).toBe(true);
+		expect(button('.hexlore-topbar-segment', 1).classList.contains('is-active')).toBe(true);
+		button('.hexlore-topbar-segment', 0).dispatchEvent(new MouseEvent('click'));
+		await tick(20);
+		expect(map.sketchMode.active).toBe(false);
+	});
+});
+
 describe('the player view control', () => {
 	it('starts and stops on a real port', async () => {
 		const file = map.mapState().file!;
