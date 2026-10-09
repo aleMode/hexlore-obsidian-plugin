@@ -2,7 +2,11 @@
 // PNG, the Flutter app's format) through UPNG (pure JS, MIT): no canvas,
 // synchronous, the same in the plugin and in the tests.
 
-import { decode, encode, toRGBA8 } from '@pdf-lib/upng';
+import * as upngModule from '@pdf-lib/upng';
+
+// The package's ESM build (what esbuild bundles) has only a default export;
+// its CommonJS build (what the tests load) has the functions themselves.
+const UPNG: typeof upngModule = (upngModule as unknown as { default?: typeof upngModule }).default ?? upngModule;
 import type { PatchCodec } from './libraries';
 import type { Raster } from './raster';
 
@@ -20,13 +24,13 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 export function encodePng(img: Raster): Uint8Array {
-	return new Uint8Array(encode([img.data.slice().buffer], img.width, img.height, 0));
+	return new Uint8Array(UPNG.encode([img.data.slice().buffer], img.width, img.height, 0));
 }
 
 export function decodePng(bytes: Uint8Array): Raster | null {
 	try {
-		const png = decode(bytes.slice().buffer);
-		const rgba = toRGBA8(png)[0];
+		const png = UPNG.decode(bytes.slice().buffer);
+		const rgba = UPNG.toRGBA8(png)[0];
 		if (!rgba) return null;
 		return { width: png.width, height: png.height, data: new Uint8ClampedArray(rgba) };
 	} catch {

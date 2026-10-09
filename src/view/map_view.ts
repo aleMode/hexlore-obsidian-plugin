@@ -40,6 +40,8 @@ import { hexesByNote, hexesOfNote } from './vault_notes';
 import { PLAYERS_EVENT } from '../server/control';
 import { ImageExportModal } from './image_export_modal';
 import { HexifyModal } from './hexify_modal';
+import { ImportWizard, UNDERLAY_CONFIG } from './import_wizard';
+import { UnderlayConfig } from '../importer/underlay';
 import { SKETCH_TOOLS, SketchMode } from './sketch_mode';
 import { TRACE_CONFIG, initialTrace, readTraceConfig, writeTraceConfig, type TraceImage } from './trace_image';
 import { playersSceneData } from '../render/players_scene';
@@ -62,6 +64,8 @@ export interface Display {
 	/** Hatch the hexes not written yet. */
 	gmFog: boolean;
 	badges: boolean;
+	/** The underlay's opacity. */
+	underlayOpacity: number;
 }
 
 /** Per MAP, on this device: what is shown (decision 27). */
@@ -71,6 +75,8 @@ export interface OverlayState {
 	regions: boolean;
 	hiddenRegions: string[];
 	borders: boolean;
+	/** The imported picture under the map (decision 12: hidden on open). */
+	underlay: boolean;
 }
 
 /** What the map panel reads. */
@@ -202,7 +208,9 @@ export class MapView extends ItemView {
 	private lastThreadColor = '';
 	private lastClick: { at: number; x: number; y: number; line: string | null; cell?: string | null } | null = null;
 	private previewed: string | null = null;
-	private overlays: OverlayState = { threads: true, hiddenThreadColors: [], regions: true, hiddenRegions: [], borders: true };
+	private overlays: OverlayState = { threads: true, hiddenThreadColors: [], regions: true, hiddenRegions: [], borders: true, underlay: false };
+	/** The imported picture and its image → scene affine, when the map has one. */
+	private underlay: { img: HTMLImageElement; m: [number, number, number, number, number, number]; name: string } | null = null;
 	/** Region id → its note, from the index. */
 	private regionLinks = new Map<string, string[]>();
 	/** The hexes the note being read stands for (an NPC: its place's hexes),
@@ -230,6 +238,8 @@ export class MapView extends ItemView {
 			votes: (file: TFile | null) => Map<string, number>;
 			/** "Export to the HexLore app…" (item 2.7). */
 			exportFlutter: (file: TFile) => void;
+			/** The plugin's folder (the importer's libraries live there). */
+			pluginDir: string;
 		},
 	) {
 		super(leaf);
@@ -405,6 +415,13 @@ export class MapView extends ItemView {
 		menu.addItem((i) => i.setTitle('Explode map…').setIcon('expand').setDisabled(ro).onClick(() => this.explodeDialog()));
 		menu.addItem((i) =>
 			i
+				.setTitle('Import map image…')
+				.setIcon('image-plus')
+				.setDisabled(ro)
+				.onClick(() => this.importImage()),
+		);
+		menu.addItem((i) =>
+			i
 				.setTitle('Export image…')
 				.setIcon('image-down')
 				.setDisabled(!this.store)
@@ -478,6 +495,7 @@ export class MapView extends ItemView {
 			return;
 		}
 		this.loadOverlays();
+		void this.loadUnderlay();
 		this.canvas.setScene(new MapScene(this.data));
 		this.applyOverlays();
 		this.updateNotice();
@@ -613,6 +631,7 @@ export class MapView extends ItemView {
 			threadStyle: d?.threadStyle === 'ribbon' ? 'ribbon' : 'arc',
 			gmFog: d?.gmFog === true,
 			badges: d?.badges !== false,
+			underlayOpacity: typeof d?.underlayOpacity === 'number' ? Math.min(1, Math.max(0.05, d.underlayOpacity)) : 0.45,
 		};
 	}
 
@@ -843,6 +862,7 @@ export class MapView extends ItemView {
 			regions: o?.regions !== false,
 			hiddenRegions: Array.isArray(o?.hiddenRegions) ? o.hiddenRegions.filter((x) => typeof x === 'string') : [],
 			borders: o?.borders !== false,
+			underlay: o?.underlay === true,
 		};
 	}
 
@@ -910,6 +930,16 @@ export class MapView extends ItemView {
 		const grid = scene?.grid;
 		if (grid && scene) {
 			const k = 1 / f.camera.scale; // scene units per screen px
+			if (this.underlay && this.overlays.underlay && !this.sketchMode.active) {
+				// Over the hex fills, translucent (decision 12), as the Flutter canvas.
+				const [a, b, c, d, tx, ty] = this.underlay.m;
+				const k = f.camera.scale * f.dpr;
+				f.c.setTransform(k, 0, 0, k, f.camera.ox * f.dpr, f.camera.oy * f.dpr);
+				f.c.transform(a, c, b, d, tx, ty);
+				f.c.globalAlpha = this.loadDisplay().underlayOpacity;
+				f.c.drawImage(this.underlay.img, 0, 0);
+				f.c.globalAlpha = 1;
+			}
 			if (this.noteHighlight) highlightCells(f, idsToCells(this.noteHighlight.ids), NOTE_GLOW, 0.16, 2.5);
 			if (this.hoverHighlight) highlightCells(f, idsToCells(this.hoverHighlight), NOTE_GLOW, 0.32, 3.5);
 			if (this.selection.size) strokeCells(f, [...this.selection].map(cellOfKey), SELECT_GLOW, 3);
@@ -1458,6 +1488,71 @@ export class MapView extends ItemView {
 		this.noteHighlight = { name, ids };
 		this.canvas.paintOverlay();
 		this.broadcast();
+	}
+
+	// ----- the import underlay (item 2.9) ---------------------------------------------------
+
+	/** The map's underlay: the picture linked as `underlay:`, placed by the
+	 *  data folder's import/underlay.json. */
+	async loadUnderlay(): Promise<void> {
+		this.underlay = null;
+		const index = this.file;
+		if (!index) return;
+		const fm = this.app.metadataCache.getFileCache(index)?.frontmatter;
+		const link = typeof fm?.underlay === 'string' ? fm.underlay.replace(/^!?\[\[|\]\]$/g, '').split('|')[0]! : '';
+		const file = link ? this.app.metadataCache.getFirstLinkpathDest(link, index.path) : null;
+		const path = `${this.dataDir}/${UNDERLAY_CONFIG}`;
+		if (!file || !(await this.app.vault.adapter.exists(path))) return;
+		let cfg: UnderlayConfig | null = null;
+		try {
+			cfg = UnderlayConfig.fromJson(JSON.parse(await this.app.vault.adapter.read(path)) as Record<string, unknown>);
+		} catch {
+			cfg = null;
+		}
+		if (!cfg) return;
+		const img = new Image();
+		img.src = this.app.vault.getResourcePath(file);
+		await img.decode().catch(() => undefined);
+		this.underlay = { img, m: cfg.sceneTransform(), name: file.name };
+		this.canvas.paintOverlay();
+		this.broadcast();
+	}
+
+	/** The underlay's picture name, or null when the map has none. */
+	get underlayName(): string | null {
+		return this.underlay?.name ?? null;
+	}
+
+	/** Forget the underlay: the link and its placement go, the picture stays. */
+	async removeUnderlay(): Promise<void> {
+		if (!this.file) return;
+		await this.app.fileManager.processFrontMatter(this.file, (fm: Record<string, unknown>) => {
+			delete fm.underlay;
+		});
+		const path = `${this.dataDir}/${UNDERLAY_CONFIG}`;
+		if (await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.remove(path);
+		this.underlay = null;
+		this.canvas.paintOverlay();
+		this.broadcast();
+	}
+
+	/** "Import map image…" (item 2.9). */
+	importImage(): void {
+		if (!this.editor || this.editor.readOnly || !this.file) {
+			new Notice('Importing needs an editable map.');
+			return;
+		}
+		new ImportWizard({
+			app: this.app,
+			editor: this.editor,
+			index: this.file,
+			dataDir: this.dataDir,
+			pluginDir: this.panel.pluginDir,
+			underlayChanged: () => {
+				this.setOverlays({ underlay: true });
+				window.setTimeout(() => void this.loadUnderlay(), 300);
+			},
+		}).open();
 	}
 
 	// ----- the Sketch view (item 2.8) -----------------------------------------------------

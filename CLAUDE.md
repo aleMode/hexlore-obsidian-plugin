@@ -180,6 +180,25 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   display state, never undoable. The swatch editor (stage 3) is in the map
   panel. "Sketch over the map" (Display) shows it in the hex view faintly,
   or its labels only.
+- The importer (item 2.9, decisions 12–12l; READ
+  `../hexlore_flutter/lib/importer/CLAUDE.md` before changing it):
+  `src/importer/` ports Flutter's `lib/importer/` file for file, on plain
+  RGBA `Raster`s (`raster.ts` mirrors package:image's average resize,
+  grayscale and truncating stores). Calibration, sampler, Lab + the
+  built-in prior, ink mask + stamp recogniser, the two-recogniser cascade,
+  corrective libraries (icon patches as base64 PNG via UPNG — import it as
+  in `png_codec.ts`: its ESM build has only a default export), the session
+  state machine, river tracer + ridge filter (Float32 storage, Dart's
+  iteration order and `dartRound`) + debug stages, the underlay affine.
+  Tests are the Flutter ones, ported; the ground-truth harness needs the
+  user's image and skips, as in Flutter. `view/import_wizard.ts` is the
+  wizard (pick a vault image → two clicks → review with a fix brush →
+  draw / trace rivers → drag to place → `editor.applyImport`, ONE undo
+  step); libraries live in the plugin folder (`import-libraries.json`,
+  Flutter's format); the picture can stay as the map's underlay
+  (`underlay:` link + `import/underlay.json`), drawn translucent over the
+  fills from the Display panel. NOT ported: the optional Ollama
+  classifier, and the multi-isolate fan-out (chunks yield to the UI instead).
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane

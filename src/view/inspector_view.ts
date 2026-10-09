@@ -948,6 +948,20 @@ export class InspectorView extends ItemView {
 			}
 		}
 		new Setting(details).setName('Regions').addToggle((t) => t.setValue(o.regions).onChange((v) => map.setOverlays({ regions: v })));
+		const underlay = map.underlayName;
+		if (underlay) {
+			new Setting(details)
+				.setName('Imported picture underneath')
+				.setDesc(underlay)
+				.addToggle((t) => t.setValue(o.underlay).onChange((v) => map.setOverlays({ underlay: v })))
+				.addExtraButton((b) => b.setIcon('trash-2').setTooltip('Stop using it as the underlay (the picture stays in the vault)').onClick(() => void map.removeUnderlay()));
+			if (o.underlay) {
+				new Setting(details)
+					.setName('Its opacity')
+					.addSlider((sl) => sl.setLimits(0.05, 1, 0.05).setValue(d.underlayOpacity).onChange((v) => map.setDisplay({ underlayOpacity: v })))
+					.settingEl.addClass('hexlore-sub-row');
+			}
+		}
 		new Setting(details).setName('Borders').addToggle((t) => t.setValue(o.borders).onChange((v) => map.setOverlays({ borders: v })));
 	}
 }

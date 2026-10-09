@@ -662,3 +662,132 @@
 .hexlore-swatch-row input[type='text'] {
 	width: 7em !important;
 }
+
+/* --- Item 2.9: the import wizard ------------------------------------------------- */
+.modal.hexlore-import-modal {
+	width: 94vw;
+	max-width: 94vw;
+	height: 90vh;
+	max-height: 90vh;
+}
+
+.hexlore-import-modal .modal-content {
+	height: calc(100% - 3em);
+}
+
+.hexlore-import {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.hexlore-import-steps {
+	display: flex;
+	gap: var(--size-4-3);
+	align-items: center;
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+}
+
+.hexlore-import-step.is-active {
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-import-busy {
+	margin-left: auto;
+	color: var(--text-accent);
+}
+
+.hexlore-import-main {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	gap: var(--size-4-3);
+}
+
+.hexlore-import-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+}
+
+.hexlore-import-intro {
+	margin: auto;
+	max-width: 32em;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.hexlore-import-stage {
+	flex: 1;
+	position: relative;
+	border-radius: var(--radius-m);
+	overflow: hidden;
+	background: #1a1a2e;
+	touch-action: none;
+}
+
+.hexlore-import-stage canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.hexlore-import-side {
+	width: 340px;
+	flex: none;
+	overflow-y: auto;
+	padding-right: var(--size-4-1);
+}
+
+.hexlore-import-side .setting-item {
+	padding: var(--size-4-2) 0;
+}
+
+.hexlore-import-groups {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: var(--size-4-2) 0;
+}
+
+.hexlore-import-group {
+	display: flex;
+	gap: var(--size-4-2);
+	padding: var(--size-4-1);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	border-left: 3px solid var(--color-orange);
+}
+
+.hexlore-import-group.is-done {
+	border-left-color: var(--color-green);
+}
+
+.hexlore-import-group.is-selected {
+	background: var(--background-modifier-hover);
+	cursor: default;
+}
+
+.hexlore-import-thumb canvas {
+	width: 40px;
+	height: 40px;
+	border-radius: var(--radius-s);
+	image-rendering: pixelated;
+}
+
+.hexlore-import-group-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.hexlore-import-group-name {
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-import-group-controls .setting-item {
+	padding: 2px 0;
+	border-top: none;
+}

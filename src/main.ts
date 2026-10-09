@@ -30,6 +30,7 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				sections: () => this.toggleSections(),
 				votes: (file) => this.players.voteCounts(file),
 				exportFlutter: (file) => void exportToFlutter(this.app, this.stores, file),
+				pluginDir: this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
 			}));
 		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
@@ -72,6 +73,16 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 				const url = this.players.url;
 				if (!url) return false;
 				if (!checking) void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`));
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'import-map-image',
+			name: 'Import a map image into this map…',
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(MapView);
+				if (!view) return false;
+				if (!checking) view.importImage();
 				return true;
 			},
 		});
