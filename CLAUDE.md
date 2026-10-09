@@ -154,6 +154,14 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   expected` (`HEXLORE_WRITE_CONVERTER=1` writes it into the Flutter repo,
   then `npm run vendor`); Flutter's `converter_roundtrip_test.dart` checks
   the trip back. `src/notes/npc_page.ts` ports Flutter's NPC page sections.
+- Image export (item 2.10, Flutter's decision 32): `core/export_layout.ts`
+  (Flutter's export_layout.dart: tiles, pages, scale), `render/image_export.ts`
+  (the map painter offscreen, tile by tile; PNG with a scale-bar + credits
+  strip; PDF via pdf-lib (MIT), one raster per overlapping page, labelled),
+  `render/players_scene.ts` (the PLAYERS version is built from the filter's
+  payload, never the model — the secrecy test asserts on that data), and
+  `view/image_export_modal.ts` (the options; the file lands beside the map
+  in the vault and opens).
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13); other modules add groups.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane

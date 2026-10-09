@@ -28,7 +28,7 @@ import { reportMarkdown, runBench } from '../dev/bench';
 import { syntheticMap } from '../dev/synthetic';
 import { ART } from '../render/art';
 import { MapCanvas } from '../render/map_canvas';
-import { MapScene, type MapData, type MapStyle } from '../render/scene';
+import { DEFAULT_OVERLAYS, MapScene, type MapData, type MapStyle } from '../render/scene';
 import { sceneDataFromModel } from '../render/scene_from_model';
 import type { Surface } from '../render/textures';
 import { REGIONS, parseHexList, parseLinks, type IndexProblem } from '../storage/hexmap_index';
@@ -38,6 +38,10 @@ import type { MapStore, StoreEvent } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
 import { hexesByNote, hexesOfNote } from './vault_notes';
 import { PLAYERS_EVENT } from '../server/control';
+import { ImageExportModal } from './image_export_modal';
+import { playersSceneData } from '../render/players_scene';
+import { filterCampaignForPlayer } from '../core/player_filter';
+import { toPlain, type JsonObject } from '../core/json';
 
 export const MAP_VIEW = 'hexlore-map';
 
@@ -369,6 +373,13 @@ export class MapView extends ItemView {
 		const ro = !this.editor || this.editor.readOnly;
 		menu.addItem((i) => i.setTitle('Resize grid…').setIcon('scaling').setDisabled(ro).onClick(() => this.resizeDialog()));
 		menu.addItem((i) => i.setTitle('Explode map…').setIcon('expand').setDisabled(ro).onClick(() => this.explodeDialog()));
+		menu.addItem((i) =>
+			i
+				.setTitle('Export image…')
+				.setIcon('image-down')
+				.setDisabled(!this.store)
+				.onClick(() => this.exportImage()),
+		);
 		menu.addItem((i) =>
 			i
 				.setTitle('Export as a campaign folder…')
@@ -1397,6 +1408,30 @@ export class MapView extends ItemView {
 		this.noteHighlight = { name, ids };
 		this.canvas.paintOverlay();
 		this.broadcast();
+	}
+
+	/** "Export image…" (item 2.10): PNG or PDF, Players or GM. */
+	exportImage(): void {
+		const store = this.store;
+		if (!store || !this.file || !this.data) return;
+		const m = store.model;
+		const [w, h] = this.canvas.size;
+		const cam = this.canvas.camera;
+		const scene = this.canvas.getScene();
+		new ImageExportModal({
+			app: this.app,
+			index: this.file,
+			// The Players version comes from the filter's payload, never the model.
+			source: (version) =>
+				version === 'players'
+					? { data: playersSceneData(toPlain(filterCampaignForPlayer(m)) as JsonObject, m.meta.format), overlays: DEFAULT_OVERLAYS, mapScale: m.meta.scale, name: m.meta.name }
+					: { data: sceneDataFromModel(m, new Set(this.links.keys())), overlays: scene?.overlays ?? DEFAULT_OVERLAYS, mapScale: m.meta.scale, name: m.meta.name },
+			view: [-cam.ox / cam.scale, -cam.oy / cam.scale, w / cam.scale, h / cam.scale],
+			style: this.canvas.style,
+			blend: this.canvas.blend,
+			revealed: m.revealed.size,
+			makeSurface,
+		}).open();
 	}
 
 	/** Open a hex's principal note in a pane beside the map. */

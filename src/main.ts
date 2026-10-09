@@ -76,6 +76,16 @@ export default class HexLorePlugin extends Plugin implements SettingsHost {
 			},
 		});
 		this.addCommand({
+			id: 'export-image',
+			name: 'Export the map as an image or PDF…',
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(MapView);
+				if (!view) return false;
+				if (!checking) view.exportImage();
+				return true;
+			},
+		});
+		this.addCommand({
 			id: 'export-to-flutter',
 			name: 'Export this map as a campaign folder…',
 			checkCallback: (checking) => {
