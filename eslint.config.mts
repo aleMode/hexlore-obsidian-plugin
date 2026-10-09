@@ -17,6 +17,8 @@ export default defineConfig(
 		'test-vault',
 		'scripts',
 		'vitest.config.ts',
+		// A stand-in for Obsidian itself (test only), not plugin code.
+		'test/mocks',
 	]),
 	{
 		languageOptions: {

@@ -1053,3 +1053,5 @@ class ImageFilePicker extends FuzzySuggestModal<TFile> {
 	}
 }
 
+/** For the view smoke tests. */
+export const __testing = { ImageStage };
