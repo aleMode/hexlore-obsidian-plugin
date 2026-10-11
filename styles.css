@@ -19,8 +19,13 @@
 	cursor: default;
 }
 
+/* !important: the Sketch view sets its tool's cursor inline. */
+.hexlore-map-stage.is-space-pan {
+	cursor: grab !important;
+}
+
 .hexlore-map-stage.is-panning {
-	cursor: grabbing;
+	cursor: grabbing !important;
 }
 
 .hexlore-map-stage canvas {
@@ -953,6 +958,15 @@
 	min-height: 2.5em;
 }
 
+.hexlore-stylus-pad.is-wheel {
+	height: 120px;
+}
+
+.hexlore-stylus-pad.is-wheel + .hexlore-stylus-read {
+	white-space: pre;
+	min-height: 8lh;
+}
+
 /* The Display & overlays panel (display_panel.ts), under its top-bar button. */
 
 .hexlore-display-panel {
@@ -1084,4 +1098,17 @@
 	min-width: 3ch;
 	text-align: center;
 	font-variant-numeric: tabular-nums;
+}
+
+/* Fullscreen (top bar, leftmost): the map view leaves its tab for the body.
+   Under hover previews, dialogs, menus and notices; over the sidebars and
+   the status bar. */
+.hexlore-map-view.is-fullscreen {
+	position: fixed;
+	inset: 0;
+	/* .view-content's height leaves room for a header there is none of here */
+	width: 100%;
+	height: 100%;
+	z-index: calc(var(--layer-popover) - 1);
+	background: var(--background-primary);
 }

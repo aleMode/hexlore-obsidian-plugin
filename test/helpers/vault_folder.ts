@@ -46,7 +46,8 @@ export function readTree(dir: string): Map<string, string> {
 		for (const e of fs.readdirSync(d, { withFileTypes: true })) {
 			const p = path.join(d, e.name);
 			if (e.isDirectory()) walk(p);
-			else out.set(path.relative(dir, p).split(path.sep).join('/'), e.name.endsWith('.png') ? `<${fs.statSync(p).size} bytes>` : fs.readFileSync(p, 'utf8'));
+			// Text with LF endings: a checkout with core.autocrlf (Windows) has CRLF.
+			else out.set(path.relative(dir, p).split(path.sep).join('/'), e.name.endsWith('.png') ? `<${fs.statSync(p).size} bytes>` : fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n'));
 		}
 	};
 	walk(dir);

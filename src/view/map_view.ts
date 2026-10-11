@@ -8,7 +8,7 @@
 
 import { FuzzySuggestModal, ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
 import { nearestAnchor } from '../core/anchors';
-import { axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
+import { HEX_RADIUS as R, axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
 import { fitPaste, topLeftCell } from '../core/hex_clipboard';
 import { nearestLineSegment } from '../core/line_edit';
 import { sameAnchor, type Anchor } from '../core/river';
@@ -40,6 +40,7 @@ import { hexesByNote, hexesOfNote } from './vault_notes';
 import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { TopBar } from './top_bar';
 import { DisplayPanel, type DisplayPanelState } from './display_panel';
+import { WheelClassifier } from './wheel_intent';
 import { MapPicker, NewMapModal, QuickJumpModal, RIVER_WIDTH_PRESETS, RiverWidthModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
 import { NewNoteModal } from './inspector_view';
 import { createNote, notesInFolder, noteKind, templateFiles } from './vault_notes';
@@ -158,6 +159,17 @@ export function isMapIndex(app: App, file: TFile | null): file is TFile {
 	return app.metadataCache.getFileCache(file)?.frontmatter?.['hexlore-plugin'] === 'map' || file.path.endsWith('.hexmap.md');
 }
 
+/** Where a space is typed, not a pan: text fields, text areas, editors. */
+function isTextEntry(target: EventTarget | null): boolean {
+	// By tag name, not `instanceof`: a map in a popout window has its own
+	// element classes.
+	const t = target as HTMLElement | null;
+	if (!t || typeof t.tagName !== 'string') return false;
+	if (t.isContentEditable || t.closest('[contenteditable=""], [contenteditable="true"]')) return true;
+	if (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true;
+	return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color'].includes((t as HTMLInputElement).type);
+}
+
 function makeSurface(w: number, h: number): Surface {
 	if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
 	const c = createEl('canvas');
@@ -185,6 +197,7 @@ export class MapView extends ItemView {
 	private saveTimer = 0;
 	private loading: Promise<void> | null = null;
 	private benching = false;
+	private fullscreen = false;
 
 	// ----- editing --------------------------------------------------------------
 	private editor: MapEditor | null = null;
@@ -200,7 +213,9 @@ export class MapView extends ItemView {
 	private band: [number, number, number, number] | null = null;
 	private ruler: [[number, number], [number, number]] | null = null;
 	private spaceDown = false;
+	private readonly wheel = new WheelClassifier();
 	private broadcastPending = 0;
+	private broadcastAfterStroke = false;
 	private hoverScene: [number, number] | null = null;
 	private selectedLine: { kind: LineKind; id: string } | null = null;
 	/** The selected line's point the GM is working on (Del deletes it). */
@@ -243,7 +258,6 @@ export class MapView extends ItemView {
 		private readonly panel: {
 			ensure: () => Promise<void>;
 			toggle: () => Promise<void>;
-			sections: () => Promise<void>;
 			/** Live player votes on this map: hex id → count. */
 			votes: (file: TFile | null) => Map<string, number>;
 			/** "Export to the HexLore app…" (item 2.7). */
@@ -370,9 +384,15 @@ export class MapView extends ItemView {
 		this.addAction('file-text', 'Open as Markdown', () => {
 			if (this.file) this.openAsMarkdown(this.file, this.leaf);
 		});
-		this.addAction('panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => void this.panel.toggle());
-		this.addAction('library', 'Show or hide the sections (the campaign’s notes, by folder)', () => void this.panel.sections());
 		this.buildTopBar(root);
+		this.registerDomEvent(root.doc, 'fullscreenchange', () => {
+			if (!root.doc.fullscreenElement) this.setFullscreen(false);
+		});
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', (leaf) => {
+				if (leaf && leaf !== this.leaf) this.setFullscreen(false);
+			}),
+		);
 
 		this.wireInput();
 		this.registerEvent(
@@ -400,7 +420,10 @@ export class MapView extends ItemView {
 				if (f !== this.file) return;
 				// The index's `data:` may point somewhere else now; else its links changed.
 				if (dataFolderOf(this.app, f) !== this.dataDir) void this.loadMap();
-				else void this.readIndex().then(() => this.rebuildScene());
+				else {
+					const before = new Set(this.links.keys());
+					void this.readIndex().then(() => this.relinkScene(before));
+				}
 			}),
 		);
 		if (this.state.file || this.state.synthetic) await this.loadMap();
@@ -410,6 +433,7 @@ export class MapView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.closed = true;
+		this.setFullscreen(false);
 		this.displayPanel?.close();
 		this.editor?.endStroke();
 		this.flushCamera();
@@ -424,41 +448,6 @@ export class MapView extends ItemView {
 		this.canvas.resize();
 		if (first && this.data) this.restoreCamera();
 		this.sketchMode?.resize();
-	}
-
-	onPaneMenu(menu: Menu, source: string): void {
-		super.onPaneMenu(menu, source);
-		const ro = !this.editor || this.editor.readOnly;
-		menu.addItem((i) => i.setTitle('Resize grid…').setIcon('scaling').setDisabled(ro).onClick(() => this.resizeDialog()));
-		menu.addItem((i) => i.setTitle('Explode map…').setIcon('expand').setDisabled(ro).onClick(() => this.explodeDialog()));
-		menu.addItem((i) =>
-			i
-				.setTitle('Import map image…')
-				.setIcon('image-plus')
-				.setDisabled(ro)
-				.onClick(() => this.importImage()),
-		);
-		menu.addItem((i) =>
-			i
-				.setTitle('Export image…')
-				.setIcon('image-down')
-				.setDisabled(!this.store)
-				.onClick(() => this.exportImage()),
-		);
-		menu.addItem((i) =>
-			i
-				.setTitle('Export as a campaign folder…')
-				.setIcon('folder-output')
-				.setDisabled(!this.file || !Platform.isDesktopApp)
-				.onClick(() => this.file && void this.panel.exportFlutter(this.file)),
-		);
-		menu.addItem((i) => i.setTitle('Art credits').setIcon('info').onClick(() => new CreditsModal(this.app).open()));
-		menu.addItem((i) =>
-			i
-				.setTitle('Benchmark the renderer')
-				.setIcon('gauge')
-				.onClick(() => void this.bench()),
-		);
 	}
 
 	// ----- loading ------------------------------------------------------------
@@ -559,6 +548,23 @@ export class MapView extends ItemView {
 		this.data = sceneDataFromModel(this.store.model, new Set(this.links.keys()));
 		this.canvas.setScene(new MapScene(this.data));
 		this.applyOverlays();
+		this.broadcast();
+	}
+
+	/** The hexes with notes changed: a hex with notes counts as content, so
+	 *  only the hexes whose links came or went are drawn again — not the
+	 *  whole map (every tile, the overview and every cache). */
+	private relinkScene(before: ReadonlySet<string>): void {
+		const scene = this.canvas.getScene();
+		const model = this.store?.model;
+		if (!scene || !model) return this.rebuildScene();
+		const now = new Set(this.links.keys());
+		for (const id of new Set([...before, ...now])) {
+			if (before.has(id) === now.has(id)) continue;
+			const h = model.hexes.get(id);
+			if (h) scene.setHex(sceneHexOf(h, now));
+		}
+		this.canvas.requestFrame();
 		this.broadcast();
 	}
 
@@ -686,6 +692,8 @@ export class MapView extends ItemView {
 	private buildTopBar(root: HTMLElement): void {
 		const players = this.panel.players;
 		this.topBar = new TopBar(root, {
+			fullscreen: () => this.fullscreen,
+			toggleFullscreen: () => this.setFullscreen(!this.fullscreen),
 			mapName: () => this.file?.basename.replace(/\.hexmap$/, '') ?? (this.state.synthetic ? 'Synthetic 100×100' : ''),
 			hasEditor: () => !!this.editor && !this.editor.readOnly,
 			sketching: () => this.sketchMode.active,
@@ -710,6 +718,11 @@ export class MapView extends ItemView {
 			notesMenu: (e) => this.sectionMenu(e, 'GM notes', 'New session document…', true),
 			toggleDisplay: (button) => this.displayPanel?.toggle(button),
 			playersMenu: (e) => this.playersMenu(e),
+			togglePanel: () => {
+				// The panel is in the sidebar, under a fullscreen map.
+				this.setFullscreen(false);
+				void this.panel.toggle();
+			},
 		});
 		root.prepend(this.topBar.el);
 		this.displayPanel = new DisplayPanel(root, {
@@ -720,6 +733,29 @@ export class MapView extends ItemView {
 			showSketchOverlay: (shown, mode) => this.sketchMode.showOverlay(shown, mode),
 			removeUnderlay: () => void this.removeUnderlay(),
 		});
+	}
+
+	/** Fullscreen: the map view leaves its tab and covers the window (and
+	 *  the screen, where the platform allows). Obsidian's menus, dialogs and
+	 *  hover previews still show above it. Leaving: the button, Esc with
+	 *  nothing else to clear, or another tab becoming active (a note opened
+	 *  beside the map would be hidden under it). */
+	setFullscreen(on: boolean): void {
+		if (on === this.fullscreen) return;
+		this.fullscreen = on;
+		const root = this.contentEl;
+		const doc = root.doc;
+		if (on) {
+			doc.body.appendChild(root);
+			root.addClass('is-fullscreen');
+			if (!doc.fullscreenElement && doc.fullscreenEnabled) doc.documentElement.requestFullscreen().catch(() => {});
+		} else {
+			root.removeClass('is-fullscreen');
+			this.containerEl.appendChild(root);
+			if (doc.fullscreenElement) doc.exitFullscreen().catch(() => {});
+		}
+		this.topBar?.refresh();
+		this.onResize();
 	}
 
 	/** The map menu, labelled with its name (Flutter's campaign menu). */
@@ -753,7 +789,8 @@ export class MapView extends ItemView {
 		);
 		menu.addSeparator();
 		label('HexLore');
-		menu.addItem((i) => i.setTitle('Stylus diagnostics…').setIcon('pen-tool').onClick(() => new StylusProbeModal(this.app).open()));
+		menu.addItem((i) => i.setTitle('Pen and trackpad diagnostics…').setIcon('pen-tool').onClick(() => new StylusProbeModal(this.app).open()));
+		menu.addItem((i) => i.setTitle('Benchmark the renderer').setIcon('gauge').onClick(() => void this.bench()));
 		menu.addItem((i) => i.setTitle('About and credits…').setIcon('info').onClick(() => new CreditsModal(this.app).open()));
 		menu.showAtMouseEvent(evt);
 	}
@@ -954,6 +991,13 @@ export class MapView extends ItemView {
 			this.app.workspace.trigger(MAP_STATE_EVENT, this);
 			return;
 		}
+		// A stroke changes cells on every pointer move, and the map panel
+		// rebuilds itself on every broadcast: it hears once, when it ends.
+		const g = this.gesture;
+		if (g && (g.kind === 'paint' || g.kind === 'fog' || g.kind === 'region')) {
+			this.broadcastAfterStroke = true;
+			return;
+		}
 		if (this.broadcastPending) return;
 		this.broadcastPending = this.stage.win.requestAnimationFrame(() => {
 			this.broadcastPending = 0;
@@ -1067,10 +1111,12 @@ export class MapView extends ItemView {
 			case 'threads':
 				scene.setThreads([...model.threads.values()].map(sceneThreadOf));
 				break;
-			case 'links':
+			case 'links': {
+				const before = new Set(this.links.keys());
 				this.links = new Map([...this.editor!.links].map(([id, l]) => [id, [...l]]));
-				this.rebuildScene();
+				this.relinkScene(before);
 				return;
+			}
 			case 'all': {
 				// A remap or a resize: everything may have moved.
 				this.rebuildScene();
@@ -1079,7 +1125,7 @@ export class MapView extends ItemView {
 				return;
 			}
 		}
-		this.canvas.sceneEdited();
+		this.canvas.requestFrame();
 		this.canvas.paintOverlay();
 		this.broadcast();
 	}
@@ -1211,7 +1257,18 @@ export class MapView extends ItemView {
 			}
 			if (this.noteHighlight) highlightCells(f, idsToCells(this.noteHighlight.ids), NOTE_GLOW, 0.16, 2.5);
 			if (this.hoverHighlight) highlightCells(f, idsToCells(this.hoverHighlight), NOTE_GLOW, 0.32, 3.5);
-			if (this.selection.size) strokeCells(f, [...this.selection].map(cellOfKey), SELECT_GLOW, 3);
+			if (this.selection.size) {
+				// Only what is in view: a select-all outline is the whole map.
+				const x0 = -f.camera.ox * k - R, y0 = -f.camera.oy * k - R;
+				const x1 = x0 + f.width * k + 2 * R, y1 = y0 + f.height * k + 2 * R;
+				const shown: Cell[] = [];
+				for (const key of this.selection) {
+					const cell = cellOfKey(key);
+					const [x, y] = axialToPixel(...cell);
+					if (x > x0 && x < x1 && y > y0 && y < y1) shown.push(cell);
+				}
+				strokeCells(f, shown, SELECT_GLOW, 3);
+			}
 			// The anchor field, while points are being placed or dragged.
 			const placing = this.tool === 'river' || this.tool === 'route' || this.gesture?.kind === 'line';
 			if (placing) drawAnchorField(f, grid, this.tool === 'route' ? this.routeColor : '#3A7DBF');
@@ -1409,6 +1466,14 @@ export class MapView extends ItemView {
 		this.band = null;
 		this.stage.removeClass('is-panning');
 		this.canvas.paintOverlay();
+		this.strokeEnded();
+	}
+
+	/** Tell the map panel what a stroke changed, now that it is over. */
+	private strokeEnded(): void {
+		if (!this.broadcastAfterStroke || this.gesture) return;
+		this.broadcastAfterStroke = false;
+		this.broadcast();
 	}
 
 	private wireInput(): void {
@@ -1545,6 +1610,7 @@ export class MapView extends ItemView {
 			}
 			this.band = null;
 			this.canvas.paintOverlay();
+			this.strokeEnded();
 		};
 		this.registerDomEvent(el, 'pointerup', end);
 		this.registerDomEvent(el, 'pointercancel', end);
@@ -1701,11 +1767,8 @@ export class MapView extends ItemView {
 				e.preventDefault();
 				const [sx, sy] = this.local(e);
 				this.hideTooltip();
-				// A mouse wheel moves in whole notches (±100 px, or lines); a
-				// trackpad scrolls in small, often sideways, steps: it pans.
-				// Ctrl+wheel is a pinch: it zooms, smoothly.
-				const notch = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
-				if (!e.ctrlKey && !notch) {
+				// Mouse wheel and pinch zoom; a trackpad's two-finger scroll pans.
+				if (this.wheel.classify(e) === 'pan') {
 					this.canvas.panBy(-e.deltaX, -e.deltaY);
 					return;
 				}
@@ -1714,18 +1777,44 @@ export class MapView extends ItemView {
 			},
 			{ passive: false },
 		);
-		// Space held: drag pans with any tool.
+		// Space held: drag pans with any tool. It counts while the view has
+		// focus, or while the pointer is over the map and focus is nowhere in
+		// particular — clicking a tool or the top bar takes focus off the map,
+		// and space must not stop working until the next click on it (which
+		// would run the tool). Never while typing, nor for a control focused
+		// elsewhere (a dialog's button). Capture phase: a component that stops
+		// the key's propagation must not hide the release from us.
 		const win = this.stage.win;
-		this.registerDomEvent(win, 'keydown', (e) => {
-			if (e.key === ' ' && this.stage.doc.activeElement === this.stage) {
-				this.spaceDown = true;
+		const doc = this.stage.doc;
+		let over = false;
+		this.registerDomEvent(el, 'pointerenter', () => (over = true));
+		this.registerDomEvent(el, 'pointerleave', () => (over = false));
+		const setSpace = (on: boolean) => {
+			this.spaceDown = on;
+			el.toggleClass('is-space-pan', on);
+		};
+		this.registerDomEvent(
+			win,
+			'keydown',
+			(e) => {
+				if (e.key !== ' ' || e.ctrlKey || e.metaKey || e.altKey || isTextEntry(e.target)) return;
+				const focus = doc.activeElement;
+				const ours = !!focus && this.contentEl.contains(focus);
+				if (!ours && !(over && (!focus || focus === doc.body))) return;
+				setSpace(true);
 				e.preventDefault();
-			}
-		});
-		this.registerDomEvent(win, 'keyup', (e) => {
-			if (e.key === ' ') this.spaceDown = false;
-		});
-		this.registerDomEvent(win, 'blur', () => (this.spaceDown = false));
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(
+			win,
+			'keyup',
+			(e) => {
+				if (e.key === ' ') setSpace(false);
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(win, 'blur', () => setSpace(false));
 	}
 
 	/** A plain click with the select tool: the selected line's body (a second
@@ -2155,7 +2244,8 @@ export class MapView extends ItemView {
 			else if (this.selectedLine || this.selectedThread) {
 				this.selectLine(null);
 				this.selectThread(null);
-			} else this.setSelection([]);
+			} else if (this.selection.size) this.setSelection([]);
+			else if (this.fullscreen) this.setFullscreen(false);
 			this.ruler = null;
 			this.canvas.paintOverlay();
 			return false;

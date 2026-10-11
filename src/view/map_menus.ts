@@ -9,6 +9,7 @@ import { RIVER_WIDTH_MAX, RIVER_WIDTH_MIN } from '../core/river';
 import { rankEntries, type JumpEntry } from '../core/quick_jump';
 import { encodeJsonLines } from '../core/json';
 import { safeNoteName } from '../notes/note_meta';
+import { WheelClassifier } from './wheel_intent';
 
 // ----- new map -------------------------------------------------------------------------
 
@@ -317,7 +318,7 @@ export class UnassignedModal extends Modal {
  *  read pressure, tilt and buttons live. */
 export class StylusProbeModal extends Modal {
 	onOpen(): void {
-		this.setTitle('Stylus diagnostics');
+		this.setTitle('Pen and trackpad diagnostics');
 		const el = this.contentEl;
 		el.createEl('p', { cls: 'setting-item-description', text: 'Draw in the box with your pen. Pressure should change as you press; a pen that always reports 0.5 (or 0) has no pressure here — on Windows, turn on the ink setting in the tablet driver.' });
 		const pad = el.createDiv({ cls: 'hexlore-stylus-pad' });
@@ -336,6 +337,23 @@ export class StylusProbeModal extends Modal {
 		};
 		pad.addEventListener('pointerdown', show);
 		pad.addEventListener('pointermove', show);
+
+		el.createEl('p', { cls: 'setting-item-description', text: 'Scroll with two fingers, pinch, or turn the mouse wheel in the box: each event, and what the map does with it.' });
+		const wheelPad = el.createDiv({ cls: 'hexlore-stylus-pad is-wheel' });
+		const wheelRead = el.createDiv({ cls: 'hexlore-stylus-read', text: 'Waiting for a scroll…' });
+		const wheel = new WheelClassifier();
+		const lines: string[] = [];
+		wheelPad.addEventListener(
+			'wheel',
+			(e) => {
+				e.preventDefault();
+				const intent = wheel.classify(e);
+				lines.unshift(`${intent === 'pan' ? 'pan ' : 'zoom'} · dx ${e.deltaX} · dy ${e.deltaY} · mode ${e.deltaMode}${e.ctrlKey ? ' · ctrl (pinch)' : ''}`);
+				lines.length = Math.min(lines.length, 8);
+				wheelRead.setText(lines.join('\n'));
+			},
+			{ passive: false },
+		);
 	}
 
 	onClose(): void {

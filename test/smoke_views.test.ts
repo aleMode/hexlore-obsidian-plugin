@@ -55,10 +55,44 @@ describe('the map view', () => {
 		expect(Notice.log.filter((n) => /error|could not/i.test(n))).toEqual([]);
 	});
 
-	it('the pane menu builds, and every action is wired', () => {
+	it('the tab header adds only "Open as Markdown"; the rest is in the top bar', () => {
+		const view = map as unknown as { actions: { title: string }[] };
+		expect(view.actions.map((a) => a.title)).toEqual(['Open as Markdown']);
 		const menu = new Menu();
 		map.onPaneMenu(menu as never, 'more-options');
-		expect(menu.items.map((i) => i.title)).toEqual(expect.arrayContaining(['Import map image…', 'Export image…', 'Export as a campaign folder…']));
+		expect(menu.items).toEqual([]);
+	});
+
+	it('space pans with focus off the map, but not while typing or on a control elsewhere', () => {
+		const stage = map.contentEl.querySelector<HTMLElement>('.hexlore-map-stage')!;
+		const key = (type: string, target: HTMLElement = document.body) => target.dispatchEvent(new KeyboardEvent(type, { key: ' ', bubbles: true, cancelable: true }));
+		const panning = () => stage.classList.contains('is-space-pan');
+		(document.activeElement as HTMLElement | null)?.blur();
+		// Pointer over the map, focus nowhere (a tool button was clicked).
+		stage.dispatchEvent(new Event('pointerenter'));
+		key('keydown');
+		expect(panning()).toBe(true);
+		key('keyup');
+		expect(panning()).toBe(false);
+		// Typing a space in a text field elsewhere stays typing.
+		const field = document.body.createEl('textarea');
+		field.focus();
+		key('keydown', field);
+		expect(panning()).toBe(false);
+		field.remove();
+		// A dialog's button keeps its space.
+		const button = document.body.createEl('button');
+		button.focus();
+		key('keydown', button);
+		expect(panning()).toBe(false);
+		button.remove();
+		// The map focused, pointer away: still the map's.
+		stage.dispatchEvent(new Event('pointerleave'));
+		stage.focus();
+		key('keydown', stage);
+		expect(panning()).toBe(true);
+		window.dispatchEvent(new Event('blur'));
+		expect(panning()).toBe(false);
 	});
 
 	it('a note being read highlights its hexes', async () => {
@@ -245,13 +279,34 @@ describe('the top bar (Flutter decision 30)', () => {
 	it('the map menu carries the campaign entries', () => {
 		const menu = menuOf(button('.hexlore-topbar-map'));
 		const titles = menu!.items.map((i) => i.title);
-		expect(titles).toEqual(expect.arrayContaining(['New map…', 'Open map…', 'Map scale…', 'Resize grid…', 'Explode map…', 'Import map image…', 'Export image (PNG / PDF)…', 'Stylus diagnostics…', 'About and credits…']));
-		for (const t of ['Map scale…', 'Stylus diagnostics…', 'New map…']) {
+		expect(titles).toEqual(expect.arrayContaining(['New map…', 'Open map…', 'Map scale…', 'Resize grid…', 'Explode map…', 'Import map image…', 'Export image (PNG / PDF)…', 'Pen and trackpad diagnostics…', 'Benchmark the renderer', 'About and credits…']));
+		expect(titles.indexOf('Benchmark the renderer')).toBe(titles.indexOf('Pen and trackpad diagnostics…') + 1);
+		for (const t of ['Map scale…', 'Pen and trackpad diagnostics…', 'New map…']) {
 			menu!.choose(t);
 			const m = Modal.open.at(-1)!;
 			expect(m).toBeDefined();
 			m.close();
 		}
+	});
+
+	it('fullscreen takes the map out of its tab and back; the map panel button leaves it', async () => {
+		const icons = () => bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button');
+		const full = icons()[0]!;
+		const home = map.contentEl.parentElement;
+		full.click();
+		expect(map.contentEl.parentElement).toBe(document.body);
+		expect(map.contentEl.classList.contains('is-fullscreen')).toBe(true);
+		expect(full.getAttribute('aria-label')).toMatch(/Leave fullscreen/);
+		full.click();
+		expect(map.contentEl.parentElement).toBe(home);
+		expect(map.contentEl.classList.contains('is-fullscreen')).toBe(false);
+		// The panel is in the sidebar, which a fullscreen map would cover.
+		const panel = icons()[icons().length - 1]!;
+		expect(panel.getAttribute('aria-label')).toMatch(/map panel/);
+		full.click();
+		panel.click();
+		await tick();
+		expect(map.contentEl.parentElement).toBe(home);
 	});
 
 	it('quick jump finds hexes and notes', () => {
@@ -266,17 +321,17 @@ describe('the top bar (Flutter decision 30)', () => {
 	it('adventures, session notes and players menus build', () => {
 		const icons = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button');
 		const titlesOf = (el: HTMLElement) => menuOf(el)?.items.map((i) => i.title) ?? [];
-		// left: search, adventures, notes; right: undo, redo, reset, display, players, players ▾
-		expect(titlesOf(icons[1]!)).toContain('New adventure…');
-		const notes = titlesOf(icons[2]!);
+		// left: fullscreen, search, adventures, notes; right: undo, redo, reset, display, players, players ▾, map panel
+		expect(titlesOf(icons[2]!)).toContain('New adventure…');
+		const notes = titlesOf(icons[3]!);
 		expect(notes).toEqual(expect.arrayContaining(['New session document…', 'Unassigned characters and quests…']));
-		expect(titlesOf(icons[8]!)).toEqual(expect.arrayContaining(['Serve on the local network', 'Reveal all hexes to players', 'Hide all hexes from players']));
-		menuOf(icons[2]!)!.choose('Unassigned characters and quests…');
+		expect(titlesOf(icons[9]!)).toEqual(expect.arrayContaining(['Serve on the local network', 'Reveal all hexes to players', 'Hide all hexes from players']));
+		menuOf(icons[3]!)!.choose('Unassigned characters and quests…');
 		Modal.open.at(-1)!.close();
 	});
 
 	it('the Display & overlays panel: pills, eyes, the sketch overlay, and closing', async () => {
-		const button = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button')[6]!;
+		const button = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button')[7]!;
 		const panel = () => map.containerEl.querySelector<HTMLElement>('.hexlore-display-panel');
 		const rowOf = (label: string) => Array.from(panel()!.querySelectorAll<HTMLElement>('.hexlore-display-row')).find((r) => r.querySelector('.hexlore-display-label')?.textContent === label)!;
 		button.click();

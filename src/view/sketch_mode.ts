@@ -99,6 +99,10 @@ export class SketchMode {
 	private hint: HTMLElement;
 	private frame = 0;
 	private paths = new WeakMap<SketchItem, Path2D>();
+	/** Scene bounds of the immutable items (labels are edited in place). */
+	private bounds = new WeakMap<SketchItem, [number, number, number, number]>();
+	/** Nothing drawn since the last clear: hidden, nothing to clear again. */
+	private blank = false;
 
 	// In-progress input, in SCENE space.
 	private pointer: number | null = null;
@@ -538,9 +542,14 @@ export class SketchMode {
 			this.cnv.height = Math.round(h * dpr);
 		}
 		const c = this.c;
+		const hidden = !this.active && this.prefs.overlay === 'none';
+		// Every camera move asks for a paint; a hidden sketch need not clear
+		// an already clear canvas each time.
+		if (hidden && this.blank) return;
 		c.setTransform(1, 0, 0, 1, 0, 0);
 		c.clearRect(0, 0, this.cnv.width, this.cnv.height);
-		if (!this.active && this.prefs.overlay === 'none') return;
+		this.blank = hidden;
+		if (hidden) return;
 		const editor = this.host.editor();
 		const cam = this.host.canvas.camera;
 		const k = cam.scale * dpr;
@@ -553,7 +562,13 @@ export class SketchMode {
 		const doc = editor?.model.sketch;
 		if (doc) {
 			const labelsOnly = !this.active && this.prefs.overlay === 'labels';
-			for (const item of doc.items) if (!labelsOnly || item instanceof SketchLabel) this.paintItem(c, item, doc);
+			// Only what is in view: every camera frame repaints the sketch.
+			for (const item of doc.items) {
+				if (labelsOnly && !(item instanceof SketchLabel)) continue;
+				const b = this.boundsOf(item);
+				if (b && (b[2] < view[0] || b[0] > view[2] || b[3] < view[1] || b[1] > view[3])) continue;
+				this.paintItem(c, item, doc);
+			}
 		}
 		if (this.active && doc) this.paintInProgress(c, doc);
 	}
@@ -593,6 +608,36 @@ export class SketchMode {
 		c.strokeStyle = 'rgba(255,255,255,0.2)';
 		c.lineWidth = 1 / scale;
 		c.stroke();
+	}
+
+	/** An item's scene bounds, generously (null: always drawn). */
+	private boundsOf(item: SketchItem): [number, number, number, number] | null {
+		if (item instanceof SketchLabel) {
+			// Edited in place: not cached. A glyph is under a size wide; the
+			// shadow blurs a few px past it.
+			return [item.x - 4, item.y - item.size * 1.3 - 4, item.x + item.text.length * item.size + 4, item.y + item.size * 0.5 + 4];
+		}
+		const known = this.bounds.get(item);
+		if (known) return known;
+		let pts: [number, number][] = [];
+		let pad = 2;
+		if (item instanceof SketchStroke) {
+			pts = item.points.map(([x, y]) => [x, y]);
+			pad += item.width;
+		} else if (item instanceof SketchShape) {
+			pts = [[item.x1, item.y1], [item.x2, item.y2]];
+			pad += item.width;
+		} else if (item instanceof SketchFill) pts = item.polygon;
+		if (!pts.length) return null;
+		const b: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+		for (const [x, y] of pts) {
+			b[0] = Math.min(b[0], x - pad);
+			b[1] = Math.min(b[1], y - pad);
+			b[2] = Math.max(b[2], x + pad);
+			b[3] = Math.max(b[3], y + pad);
+		}
+		this.bounds.set(item, b);
+		return b;
 	}
 
 	private pathOf(item: SketchItem): Path2D | null {

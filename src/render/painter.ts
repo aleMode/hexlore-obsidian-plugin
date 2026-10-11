@@ -23,7 +23,7 @@ import { ART, type Stamp } from './art';
 import { regionHatchSegments } from '../core/region';
 import type { ThreadShape } from '../core/thread_geometry';
 import { cellKey, type CellLook, type MapScene, type MapStyle, type RouteGeometry, type SceneThread } from './scene';
-import { TextureCache, type HexTexture } from './textures';
+import { TextureCache, type HexTexture, type SpriteBox } from './textures';
 import { SPEC, TEX, type GlyphTable, type Glyph } from './vendor';
 
 export const LOD_FULL = 14; // hex radius px: labels, stamps, textures
@@ -128,6 +128,88 @@ function smoothPath(c: CanvasRenderingContext2D, pts: Point[]): void {
 	}
 }
 
+/** Where paintGlyph draws [g] at (0, [y]) with [size], halo (or [pad])
+ *  included: a sprite's box. */
+function glyphBox(table: GlyphTable, g: Glyph, size: number, y: number, pad = (GLYPH_HALO_WIDTH + GLYPH_OUTLINE_WIDTH) / 2 + 1): SpriteBox {
+	const [s, tx, ty] = table.transform(g, size);
+	return [tx + s * g.left - pad, y + ty + s * g.top - pad, tx + s * g.right + pad, y + ty + s * g.bottom + pad];
+}
+
+/** Where paintBiomeStamp draws [stamp] about (0, 0): a sprite's box. A
+ *  procedural stamp stays within 1.5 sizes, plus its (screen-floored) line. */
+function stampBox(stamp: Stamp, scale: number): SpriteBox {
+	const size = R * SPEC.terrainStampScale, y = R * SPEC.stampCentreOffset;
+	if (stamp.kind === 'glyph') return glyphBox(stamp.table, stamp.glyph, size, y);
+	const e = 1.5 * size + 2 + 1 / scale;
+	return [-e, y - e, e, y + e];
+}
+
+/** Segments per subpath when a course is cut to a rect. */
+const COURSE_CHUNK = 8;
+
+const missesRect = (b: [number, number, number, number], r: [number, number, number, number], pad: number) =>
+	b[2] + pad < r[0] || b[0] - pad > r[2] || b[3] + pad < r[1] || b[1] - pad > r[3];
+
+/** Begin a path holding the parts of smoothPath's course through [pts] that
+ *  can reach [rect] grown by [pad]: runs of COURSE_CHUNK segments, each a
+ *  subpath of its own (a Bézier stays within its control points). Stroked
+ *  with ROUND caps and joins in ONE call, that is the whole course's stroke
+ *  inside the rect: such a stroke is the course swept by a disk, a run's
+ *  sweep is part of it, and one call fills the union once. A tile used to
+ *  stroke every river and road crossing it end to end. Never for a dashed
+ *  line: a cut would restart its dashes. */
+function smoothCourse(c: CanvasRenderingContext2D, pts: Point[], rect: [number, number, number, number], pad: number): void {
+	const n = pts.length;
+	if (n < 3) {
+		smoothPath(c, pts);
+		return;
+	}
+	c.beginPath();
+	const ext = [pts[0]!, ...pts, pts[n - 1]!];
+	for (let s0 = 0; s0 < n - 1; s0 += COURSE_CHUNK) {
+		const s1 = Math.min(s0 + COURSE_CHUNK, n - 1);
+		const segs: number[] = [];
+		const box: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+		const grow = (x: number, y: number) => {
+			box[0] = Math.min(box[0], x);
+			box[1] = Math.min(box[1], y);
+			box[2] = Math.max(box[2], x);
+			box[3] = Math.max(box[3], y);
+		};
+		grow(pts[s0]![0], pts[s0]![1]);
+		for (let i = s0; i < s1; i++) {
+			const p0 = ext[i]!, p1 = ext[i + 1]!, p2 = ext[i + 2]!, p3 = ext[i + 3]!;
+			const ax = p1[0] + (p2[0] - p0[0]) / 6, ay = p1[1] + (p2[1] - p0[1]) / 6;
+			const bx = p2[0] - (p3[0] - p1[0]) / 6, by = p2[1] - (p3[1] - p1[1]) / 6;
+			segs.push(ax, ay, bx, by, p2[0], p2[1]);
+			grow(ax, ay);
+			grow(bx, by);
+			grow(p2[0], p2[1]);
+		}
+		if (missesRect(box, rect, pad)) continue;
+		c.moveTo(pts[s0]![0], pts[s0]![1]);
+		for (let i = 0; i < segs.length; i += 6) c.bezierCurveTo(segs[i]!, segs[i + 1]!, segs[i + 2]!, segs[i + 3]!, segs[i + 4]!, segs[i + 5]!);
+	}
+}
+
+/** The same for a polyline (a river's dry run). */
+function polylineCourse(c: CanvasRenderingContext2D, pts: Point[], rect: [number, number, number, number], pad: number): void {
+	c.beginPath();
+	for (let s0 = 0; s0 < pts.length - 1; s0 += COURSE_CHUNK) {
+		const s1 = Math.min(s0 + COURSE_CHUNK, pts.length - 1);
+		const box: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+		for (let i = s0; i <= s1; i++) {
+			box[0] = Math.min(box[0], pts[i]![0]);
+			box[1] = Math.min(box[1], pts[i]![1]);
+			box[2] = Math.max(box[2], pts[i]![0]);
+			box[3] = Math.max(box[3], pts[i]![1]);
+		}
+		if (missesRect(box, rect, pad)) continue;
+		c.moveTo(pts[s0]![0], pts[s0]![1]);
+		for (let i = s0 + 1; i <= s1; i++) c.lineTo(pts[i]![0], pts[i]![1]);
+	}
+}
+
 function polygon(c: CanvasRenderingContext2D, pts: Point[]): void {
 	c.beginPath();
 	pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
@@ -195,6 +277,8 @@ export function paintGlyph(c: CanvasRenderingContext2D, table: GlyphTable, g: Gl
 
 export class MapPainter {
 	private labelFits = new Map<string, string>();
+	/** Blend strips by edge and fills (paintBlendStrips). */
+	private strips = new Map<string, { gradient: CanvasGradient; path: Path2D }>();
 
 	constructor(readonly textures: TextureCache) {}
 
@@ -213,12 +297,7 @@ export class MapPainter {
 		}
 		const full = radiusPx >= LOD_FULL && p.maxDetail !== 'medium';
 		const ill = p.style === 'illustrated';
-		const [x0, y0, x1, y1] = p.rect;
-		const cells: Cell[] = [];
-		for (const [q, r] of cellsInRect(x0, y0, x1, y1, scene.grid)) {
-			const [cx, cy] = axialToPixel(q, r);
-			cells.push({ q, r, cx, cy, look: scene.look(q, r, p.style) });
-		}
+		const cells = this.cellsIn(scene, p);
 
 		// 1. Fills. One anti-aliased path per cell on purpose: the faint seams
 		//    between separately anti-aliased hexes are part of the grid's look.
@@ -232,65 +311,27 @@ export class MapPainter {
 		// 1a. Blend: gradients across biome borders, over the flat fills.
 		if (p.blend) this.paintBlendStrips(c, scene, cells, p.style);
 
-		// 1b. Illustrated ground marks (clipped to the hex).
-		const textured: HexTexture[] = [];
-		if (ill && full) {
-			const obstacles = scene.obstacleSegments();
-			for (const cell of cells) {
-				const tex = cell.look.texture;
-				const h = tex && scene.hexAt(cell.q, cell.r);
-				if (!tex || !h) continue;
-				const mine = scene.group(cell.q, cell.r);
-				const mask = p.blend
-					? TEX.blendMaskFor(mine, (k) => {
-							const [dq, dr] = SPEC.hexEdgeNeighbors[k]!;
-							return scene.group(cell.q + dq, cell.r + dr);
-						})
-					: 0;
-				const t = TextureCache.hexTexture(
-					cell.q,
-					cell.r,
-					cell.cx,
-					cell.cy,
-					h.terrain,
-					h.terrainVariant,
-					tex,
-					cell.look.base,
-					!!h.feature,
-					radiusPx,
-					p.dpr,
-					obstacles.get(cellKey(cell.q, cell.r)) ?? [],
-					mask,
-				);
-				this.textures.blit(c, t, 'ground');
-				textured.push(t);
-			}
+		// 1b. Illustrated ground marks (clipped to the hex). First, every
+		//     raster this paint draws is made, before any is drawn: making
+		//     one into an atlas page this paint had already drawn from cost
+		//     a flush of the page each time.
+		const textured: HexTexture[] = ill && full ? this.texturesOf(scene, cells, p) : [];
+		if (full) {
+			if (!ill) this.textures.beginPaint();
+			for (const t of textured) this.textures.prepare(t);
+			this.sprites(scene, cells, textured, p);
 		}
+		for (const t of textured) this.textures.blit(c, t, 'ground');
 
 		// 1c. Coastlines and cell edges.
 		this.paintCellEdges(c, scene, cells, p);
 
 		// 1d. Stamps (under rivers and roads). The feature REPLACES the biome
-		//     stamp; the biome still owns the fill.
-		if (full) {
-			for (const cell of cells) {
-				const h = scene.hexAt(cell.q, cell.r);
-				if (!h) continue;
-				if (ill) {
-					if (cell.look.texture) continue; // drawn with its texture, below
-					if (h.feature) {
-						this.paintFeatureObject(c, h.feature, h.featureVariant, cell.cx, cell.cy + R * SPEC.stampCentreOffset, cell.look.base, p.scale);
-						continue;
-					}
-				}
-				if (h.feature) {
-					const g = ART.featureGlyph(h.feature, h.featureVariant);
-					if (g) paintGlyph(c, g.table, g.glyph, cell.cx, cell.cy + R * SPEC.stampCentreOffset, R * SPEC.featureStampScale, cell.look.base);
-				} else if (cell.look.painted) {
-					paintBiomeStamp(c, ART.biomeStamp(h.terrain, h.terrainVariant), cell.cx, cell.cy, cell.look.base, p.scale);
-				}
-			}
-		}
+		//     stamp; the biome still owns the fill. Each is a SPRITE: drawn once
+		//     per look and zoom bucket, blitted from the atlas from then on
+		//     (a halo stroke and a fill of a glyph path per hex, per paint, was
+		//     most of a Clean render — Flutter's decision 23).
+		if (full) for (const cell of cells) this.stamp(c, scene, cell, p);
 
 		// 1e. GM fog: a hatch on every hex the GM has not written (no name).
 		if (scene.overlays.gmFog) this.paintGmFog(c, scene, cells);
@@ -314,7 +355,7 @@ export class MapPainter {
 				const h = scene.hexAt(t.q, t.r);
 				if (h?.feature) {
 					const [fx, fy] = TEX.featureSlotCentre(t.slot);
-					this.paintFeatureObject(c, h.feature, h.featureVariant, t.cx + fx * R, t.cy + fy * R, t.ground, p.scale);
+					this.featureObject(c, h.feature, h.featureVariant, t.cx + fx * R, t.cy + fy * R, t.ground, p);
 				}
 				this.textures.blit(c, t, 'front');
 			}
@@ -349,12 +390,13 @@ export class MapPainter {
 				}
 				return pp;
 			};
+			shape.paths ??= { hatch: path(shape.hatch), contour: path(shape.contour) };
 			c.globalAlpha = 0.55;
 			c.strokeStyle = ink;
 			c.lineWidth = 2.2;
-			c.stroke(path(shape.hatch));
+			c.stroke(shape.paths.hatch);
 			c.globalAlpha = 1;
-			const contour = path(shape.contour);
+			const contour = shape.paths.contour;
 			c.strokeStyle = 'rgba(0,0,0,0.55)';
 			c.lineWidth = 7;
 			c.stroke(contour);
@@ -514,10 +556,12 @@ export class MapPainter {
 	private paintCoarse(c: CanvasRenderingContext2D, scene: MapScene, p: PaintParams): void {
 		const [x0, y0, x1, y1] = p.rect;
 		const s = R * 0.8;
-		for (const h of scene.hexes.values()) {
-			const [cx, cy] = axialToPixel(h.q, h.r);
-			if (cx < x0 - R || cx > x1 + R || cy < y0 - R || cy > y1 + R) continue;
-			c.fillStyle = scene.look(h.q, h.r, p.style).drawn;
+		// The cells in the rect, not every hex of the map: a tile or an
+		// overview band covers a small part of it.
+		for (const [q, r] of cellsInRect(x0, y0, x1, y1, scene.grid)) {
+			if (!scene.hexAt(q, r)) continue;
+			const [cx, cy] = axialToPixel(q, r);
+			c.fillStyle = scene.look(q, r, p.style).drawn;
 			c.fillRect(cx - s / 2, cy - s / 2, s, s);
 		}
 	}
@@ -537,18 +581,29 @@ export class MapPainter {
 				if (scene.group(nq, nr) === SPEC.groupNone) continue;
 				const other = scene.look(nq, nr, style);
 				if (other.base === cell.look.base) continue;
-				const cA: Point = [cell.cx, cell.cy];
-				const cB = axialToPixel(nq, nr);
-				const p0: Point = [cA[0] + R * Math.cos(DEG * 60 * k), cA[1] + R * Math.sin(DEG * 60 * k)];
-				const p1: Point = [cA[0] + R * Math.cos(DEG * 60 * ((k + 1) % 6)), cA[1] + R * Math.sin(DEG * 60 * ((k + 1) % 6))];
-				const from = lerp(lerp(p0, cA, d), lerp(p1, cA, d), 0.5);
-				const to = lerp(lerp(p0, cB, d), lerp(p1, cB, d), 0.5);
-				const g = c.createLinearGradient(from[0], from[1], to[0], to[1]);
-				g.addColorStop(0, cell.look.drawn);
-				g.addColorStop(1, other.drawn);
-				polygon(c, [lerp(p0, cA, d), lerp(p1, cA, d), p1, lerp(p1, cB, d), lerp(p0, cB, d), p0]);
-				c.fillStyle = g;
-				c.fill();
+				// A strip depends only on its edge and the two fills: made once,
+				// kept across paints and tiles (a gradient is not tied to the
+				// context that made it).
+				const key = `${cell.q},${cell.r},${k}|${cell.look.drawn}|${other.drawn}`;
+				let strip = this.strips.get(key);
+				if (!strip) {
+					const cA: Point = [cell.cx, cell.cy];
+					const cB = axialToPixel(nq, nr);
+					const p0: Point = [cA[0] + R * Math.cos(DEG * 60 * k), cA[1] + R * Math.sin(DEG * 60 * k)];
+					const p1: Point = [cA[0] + R * Math.cos(DEG * 60 * ((k + 1) % 6)), cA[1] + R * Math.sin(DEG * 60 * ((k + 1) % 6))];
+					const from = lerp(lerp(p0, cA, d), lerp(p1, cA, d), 0.5);
+					const to = lerp(lerp(p0, cB, d), lerp(p1, cB, d), 0.5);
+					const gradient = c.createLinearGradient(from[0], from[1], to[0], to[1]);
+					gradient.addColorStop(0, cell.look.drawn);
+					gradient.addColorStop(1, other.drawn);
+					const path = new Path2D();
+					[lerp(p0, cA, d), lerp(p1, cA, d), p1, lerp(p1, cB, d), lerp(p0, cB, d), p0].forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)));
+					path.closePath();
+					if (this.strips.size > 50_000) this.strips.clear();
+					this.strips.set(key, (strip = { gradient, path }));
+				}
+				c.fillStyle = strip.gradient;
+				c.fill(strip.path);
 			}
 		}
 	}
@@ -612,6 +667,128 @@ export class MapPainter {
 			c.lineWidth = (ill ? TEX.illustratedEdgeBoundaryWidth : SPEC.edgeBoundaryWidth) / p.scale;
 			c.stroke(boundary);
 		}
+	}
+
+	/** The cells a paint visits, with their looks. */
+	private cellsIn(scene: MapScene, p: PaintParams): Cell[] {
+		const [x0, y0, x1, y1] = p.rect;
+		const cells: Cell[] = [];
+		for (const [q, r] of cellsInRect(x0, y0, x1, y1, scene.grid)) {
+			const [cx, cy] = axialToPixel(q, r);
+			cells.push({ q, r, cx, cy, look: scene.look(q, r, p.style) });
+		}
+		return cells;
+	}
+
+	/** The texture records of the textured [cells] (Illustrated, full detail). */
+	private texturesOf(scene: MapScene, cells: Cell[], p: PaintParams): HexTexture[] {
+		this.textures.beginPaint();
+		const res = this.textures.resolution(R * p.scale, p.dpr);
+		const obstacles = scene.obstacleSegments();
+		const out: HexTexture[] = [];
+		for (const cell of cells) {
+			const tex = cell.look.texture;
+			const h = tex && scene.hexAt(cell.q, cell.r);
+			if (!tex || !h) continue;
+			const mine = scene.group(cell.q, cell.r);
+			const mask = p.blend
+				? TEX.blendMaskFor(mine, (k) => {
+						const [dq, dr] = SPEC.hexEdgeNeighbors[k]!;
+						return scene.group(cell.q + dq, cell.r + dr);
+					})
+				: 0;
+			out.push(
+				TextureCache.hexTexture(
+					cell.q,
+					cell.r,
+					cell.cx,
+					cell.cy,
+					h.terrain,
+					h.terrainVariant,
+					tex,
+					cell.look.base,
+					!!h.feature,
+					res,
+					obstacles.get(cellKey(cell.q, cell.r)) ?? [],
+					mask,
+				),
+			);
+		}
+		return out;
+	}
+
+	/** A cell's stamp: its feature, else its biome's stamp, as a sprite. In
+	 *  the Illustrated style a textured cell has none (its objects are its
+	 *  stamp) and a feature is an object. No context: pre-warming. */
+	private stamp(c: CanvasRenderingContext2D | null, scene: MapScene, cell: Cell, p: PaintParams): void {
+		const h = scene.hexAt(cell.q, cell.r);
+		if (!h) return;
+		const k = p.scale * p.dpr;
+		if (p.style === 'illustrated') {
+			if (cell.look.texture) return; // drawn with its texture
+			if (h.feature) this.featureObject(c, h.feature, h.featureVariant, cell.cx, cell.cy + R * SPEC.stampCentreOffset, cell.look.base, p);
+			if (h.feature) return;
+		}
+		const fill = cell.look.base;
+		if (h.feature) {
+			const g = ART.featureGlyph(h.feature, h.featureVariant);
+			if (!g) return;
+			const size = R * SPEC.featureStampScale;
+			this.textures.sprite(c, `f|${h.feature}|${h.featureVariant}|${fill}`, cell.cx, cell.cy + R * SPEC.stampCentreOffset, () => glyphBox(g.table, g.glyph, size, 0), k, (cc) =>
+				paintGlyph(cc, g.table, g.glyph, 0, 0, size, fill),
+			);
+		} else if (cell.look.painted) {
+			const stamp = ART.biomeStamp(h.terrain, h.terrainVariant);
+			if (!stamp) return;
+			this.textures.sprite(c, `b|${stamp.id}|${fill}`, cell.cx, cell.cy, () => stampBox(stamp, p.scale), k, (cc, kq) =>
+				paintBiomeStamp(cc, stamp, 0, 0, fill, kq / p.dpr),
+			);
+		}
+	}
+
+	/** Make the textures and sprites a paint of [p] would need, drawing
+	 *  nothing, within the frame's texture budget (pre-warming an area
+	 *  before it scrolls into view). True when all of them are held. */
+	warm(scene: MapScene, p: PaintParams): boolean {
+		if (R * p.scale < LOD_FULL || p.maxDetail === 'medium') return true;
+		const cells = this.cellsIn(scene, p);
+		let textured: HexTexture[] = [];
+		if (p.style === 'illustrated') {
+			textured = this.texturesOf(scene, cells, p);
+			for (const t of textured) if (!this.textures.ensure(t)) return false;
+		} else this.textures.beginPaint();
+		this.sprites(scene, cells, textured, p);
+		return this.textures.budgetLeft > 0;
+	}
+
+	/** Make the sprites of [cells] (feature objects, stamps), drawing
+	 *  nothing; out of budget, the rest wait for the draw. */
+	private sprites(scene: MapScene, cells: Cell[], textured: HexTexture[], p: PaintParams): void {
+		for (const t of textured) {
+			const h = t.slot !== null ? scene.hexAt(t.q, t.r) : undefined;
+			if (h?.feature) {
+				const [fx, fy] = TEX.featureSlotCentre(t.slot!);
+				this.featureObject(null, h.feature, h.featureVariant, t.cx + fx * R, t.cy + fy * R, t.ground, p);
+			}
+		}
+		for (const cell of cells) this.stamp(null, scene, cell, p);
+	}
+
+	/** A feature object, as a sprite (see paintFeatureObject). */
+	private featureObject(c: CanvasRenderingContext2D | null, feature: string, variant: number, x: number, y: number, ground: string, p: PaintParams): void {
+		const art = ART.featureGlyph(feature as never, variant);
+		if (!art) return;
+		const box = (): SpriteBox => {
+			const size = R * SPEC.featureStampScale;
+			const depth = size * TEX.featureSolidDepth;
+			const g = glyphBox(art.table, art.glyph, size, 0, TEX.glyphSolidOutlinePx + 1);
+			// The walls are layers from -depth/2 to +depth/2; the shadow an
+			// ellipse under the foot.
+			return [Math.min(g[0], -R * 0.37), g[1] - depth / 2, Math.max(g[2], R * 0.37), Math.max(g[3] + depth / 2, R * 0.46)];
+		};
+		this.textures.sprite(c, `o|${feature}|${variant}|${ground}`, x, y, box, p.scale * p.dpr, (cc, kq) =>
+			this.paintFeatureObject(cc, feature, variant, 0, 0, ground, kq / p.dpr),
+		);
 	}
 
 	/** A feature as an object on the ground: a soft shadow, then the
@@ -700,8 +877,17 @@ export class MapPainter {
 		const whole = rivers.filter((g) => !g.split);
 		const split = rivers.filter((g) => g.split);
 		const [x0, y0, x1, y1] = p.rect;
+		// A hex wholly outside the rect adds nothing inside it to a clip or a
+		// fill, so only the ones touching it are added (a split river's water
+		// cells, once per tile, were most of a tile's path work).
+		const reach = R + 1 / (p.scale * p.dpr); // and a device pixel of anti-aliasing
+		const touches = (q: number, r: number) => {
+			const [cx, cy] = axialToPixel(q, r);
+			return cx > x0 - reach && cx < x1 + reach && cy > y0 - reach && cy < y1 + reach;
+		};
 		const addHexes = (cells: [number, number][], reversed: boolean) => {
 			for (const [q, r] of cells) {
+				if (!touches(q, r)) continue;
 				const [cx, cy] = axialToPixel(q, r);
 				const corners = UNIT.map(([x, y]) => [cx + x, cy + y] as Point);
 				if (reversed) corners.reverse();
@@ -709,14 +895,15 @@ export class MapPainter {
 				c.closePath();
 			}
 		};
-		c.lineCap = 'round';
+		c.lineCap = 'round'; // and round joins: the strokes may be cut to the rect
 		c.lineJoin = 'round';
+		const aa = 1 / (p.scale * p.dpr); // a device pixel of anti-aliasing
 		for (const layer of [RIVER_BORDER, RIVER_WATER, RIVER_GLINT]) {
 			c.strokeStyle = layer.color;
 			c.fillStyle = layer.color;
 			for (const g of whole) {
 				c.lineWidth = layer.w * g.river.width;
-				smoothPath(c, g.pts);
+				smoothCourse(c, g.pts, p.rect, c.lineWidth / 2 + aa);
 				c.stroke();
 			}
 			if (!split.length) continue;
@@ -730,12 +917,12 @@ export class MapPainter {
 				const half = (layer.w * g.river.width) / 2;
 				c.lineWidth = layer.w * g.river.width;
 				for (const run of g.split!.runs) {
-					c.beginPath();
-					run.points.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+					polylineCourse(c, run.points, p.rect, half + aa);
 					c.stroke();
 				}
 				if (layer === RIVER_GLINT) continue; // the fade swallows it
 				g.split!.mouths.forEach((m, i) => {
+					if (!g.mouths[i]!.land.some(([q, r]) => touches(q, r))) return; // clipped to those
 					const flare = half * SPEC.riverMouthFlare;
 					c.save();
 					c.beginPath();
@@ -754,6 +941,7 @@ export class MapPainter {
 			const half = (RIVER_WATER.w * g.river.width) / 2;
 			g.split!.mouths.forEach((m, i) => {
 				const info = g.mouths[i]!;
+				if (![...info.land, info.dest].some(([q, r]) => touches(q, r))) return; // clipped to those
 				const fill = scene.look(info.dest[0], info.dest[1], p.style).drawn;
 				const shore = m.spine[m.spine.length - 1]!;
 				const spill = R * SPEC.riverMouthSpill;
@@ -793,7 +981,8 @@ export class MapPainter {
 			c.lineCap = round ? 'round' : 'butt';
 			c.lineJoin = 'round';
 			c.setLineDash(dash);
-			smoothPath(c, g.pts);
+			if (round && !dash.length) smoothCourse(c, g.pts, p.rect, width / 2 + 1 / (p.scale * p.dpr));
+			else smoothPath(c, g.pts); // a cut would restart the dashes (or square the ends)
 			c.stroke();
 		};
 		for (const g of roads) {
@@ -814,6 +1003,13 @@ export class MapPainter {
 		c.lineCap = 'butt';
 
 		if (marks) {
+			// Only the marks in the rect: a road crossing a tile used to draw
+			// every pebble it has, once per tile.
+			const [x0, y0, x1, y1] = p.rect;
+			// A pebble's radius or a tick's half width, and a device pixel of
+			// anti-aliasing (which is many scene px when zoomed out).
+			const pad = 1 + 1 / (p.scale * p.dpr);
+			const inRect = (x: number, y: number) => x > x0 - pad && x < x1 + pad && y > y0 - pad && y < y1 + pad;
 			for (const g of roads) {
 				if (g.style!.marks === 'none') continue;
 				const m = scene.roadMarks(g);
@@ -821,6 +1017,7 @@ export class MapPainter {
 				c.fillStyle = ink;
 				c.globalAlpha = 0.55;
 				for (let i = 0; i + 2 < m.pebbles.length; i += 3) {
+					if (!inRect(m.pebbles[i]!, m.pebbles[i + 1]!)) continue;
 					c.beginPath();
 					c.arc(m.pebbles[i]!, m.pebbles[i + 1]!, (m.pebbles[i + 2]! < 0.8 ? 1.0 : 1.6) / 2, 0, Math.PI * 2);
 					c.fill();
@@ -831,8 +1028,10 @@ export class MapPainter {
 					c.lineWidth = 0.8;
 					c.beginPath();
 					for (let i = 0; i + 3 < m.ticks.length; i += 4) {
-						c.moveTo(m.ticks[i]!, m.ticks[i + 1]!);
-						c.lineTo(m.ticks[i + 2]!, m.ticks[i + 3]!);
+						const ax = m.ticks[i]!, ay = m.ticks[i + 1]!, bx = m.ticks[i + 2]!, by = m.ticks[i + 3]!;
+						if (Math.max(ax, bx) < x0 - pad || Math.min(ax, bx) > x1 + pad || Math.max(ay, by) < y0 - pad || Math.min(ay, by) > y1 + pad) continue;
+						c.moveTo(ax, ay);
+						c.lineTo(bx, by);
 					}
 					c.stroke();
 				}

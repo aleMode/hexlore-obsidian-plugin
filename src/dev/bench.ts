@@ -1,9 +1,11 @@
 // The renderer benchmark (item 2.0's harness, now driving the real renderer).
 //
 // Scripted, so runs compare: pan at fit and at zoom 1.0 (tiles), pan at zoom
-// 1.0 rendering directly (what every frame of an edit costs), wheel zoom one
-// notch per frame then the settle, and a 300-hex brush stroke, in Clean,
+// 1.0 rendering directly (a frame with no tiles, as after a change to threads
+// or overlays; an edit to hexes redraws only the tiles it touches), wheel zoom
+// one notch per frame then the settle, and a 300-hex brush stroke, in Clean,
 // Illustrated and Illustrated + Blend. The view is pinned to 1920×1080 CSS px.
+// Each style starts with no textures made, as a map just opened.
 
 import { HEX_RADIUS as R, unstaggeredRow } from '../core/geometry';
 import type { MapCanvas } from '../render/map_canvas';
@@ -27,6 +29,7 @@ export interface ScenarioResult {
 	dropped: number;
 	modes: string;
 	tiles: number;
+	textures: number;
 }
 
 export interface BenchReport {
@@ -103,6 +106,7 @@ export async function runBench(
 		const times: number[] = [], intervals: number[] = [], modes = new Map<string, number>();
 		const idleWork = new Map<string, number>();
 		let tiles = 0;
+		const made = canvas.texturesMade;
 		let last = await frame();
 		for (let i = 0; i < frames; i++) {
 			const now = await frame();
@@ -126,6 +130,7 @@ export async function runBench(
 				[...modes].map(([m, n]) => `${m} ${n}`).join(', ') +
 				(idleWork.size ? ` (idle: ${[...idleWork].map(([m, n]) => `${m} ${n}`).join(', ')})` : ''),
 			tiles,
+			textures: canvas.texturesMade - made,
 		});
 	};
 
@@ -137,6 +142,7 @@ export async function runBench(
 		];
 		for (const cfg of configs) {
 			canvas.setScene(new MapScene(data));
+			canvas.dropRasters(); // each style starts cold, whatever was open before
 			canvas.setStyle(cfg.style, cfg.blend);
 			canvas.useTiles = true;
 			const pan = (i: number) => canvas.panBy(i < 120 ? -6 : 6, i < 120 ? -2 : 2);
@@ -150,7 +156,7 @@ export async function runBench(
 			at(1);
 			await measure(cfg.label, 'pan at zoom 1.0', 240, pan);
 			canvas.useTiles = false;
-			await measure(cfg.label, 'pan at zoom 1.0, direct (an edit frame)', 120, pan);
+			await measure(cfg.label, 'pan at zoom 1.0, direct (no tiles)', 120, pan);
 			canvas.useTiles = true;
 			canvas.fit();
 			await measure(cfg.label, 'wheel zoom 1 notch/frame, then settle', 70, (i) => {
@@ -207,17 +213,18 @@ export function reportMarkdown(r: BenchReport, env: Record<string, string>): str
 		'Times in ms. *frame* = time inside the frame (tiles drawn and any rendered);',
 		'*interval* = between animation frames (includes raster). *dropped* = intervals',
 		'over 1.5 refresh periods. *modes*: tiles / stretch (zoom preview) / direct, and',
-		'the idle work done in those frames (prefetched tiles, overview bands).',
+		'the idle work done in those frames (prefetched tiles and their textures,',
+		'overview bands). *textures made*: Illustrated textures and sprites drawn.',
 		`Verdict: OK when frame p95 ≤ ${ms(budget)} ms and ≤ 5% of frames are dropped.`,
 		'',
-		'| Style | Scenario | frame median | frame p95 | frame max | interval p95 | dropped | tiles rendered | modes | verdict |',
-		'|---|---|---:|---:|---:|---:|---:|---:|---|---|',
+		'| Style | Scenario | frame median | frame p95 | frame max | interval p95 | dropped | tiles rendered | textures made | modes | verdict |',
+		'|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|',
 	];
 	for (const x of r.results) {
 		const ok = x.frame.p95 <= budget && x.dropped <= 0.05;
 		lines.push(
 			`| ${x.style} | ${x.name} | ${ms(x.frame.median)} | ${ms(x.frame.p95)} | ${ms(x.frame.max)} | ` +
-				`${ms(x.interval.p95)} | ${(x.dropped * 100).toFixed(0)}% | ${x.tiles} | ${x.modes} | ${ok ? 'OK' : '**slow**'} |`,
+				`${ms(x.interval.p95)} | ${(x.dropped * 100).toFixed(0)}% | ${x.tiles} | ${x.textures} | ${x.modes} | ${ok ? 'OK' : '**slow**'} |`,
 		);
 	}
 	return lines.join('\n') + '\n';

@@ -10,7 +10,12 @@ export function recordingContext(counts: Counts): CanvasRenderingContext2D {
 		get(target, key) {
 			if (key in target) return target[key];
 			if (key === 'measureText') return (s: string) => ({ width: s.length * 6 });
-			if (key === 'createLinearGradient' || key === 'createRadialGradient') return () => ({ addColorStop() {} });
+			if (key === 'createLinearGradient' || key === 'createRadialGradient') {
+				return () => {
+					counts.set(key, (counts.get(key) ?? 0) + 1);
+					return { addColorStop() {} };
+				};
+			}
 			return () => {
 				counts.set(String(key), (counts.get(String(key)) ?? 0) + 1);
 			};

@@ -25,7 +25,6 @@ export default class HexLorePlugin extends Plugin {
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
 				toggle: () => this.togglePanel(),
-				sections: () => this.toggleSections(),
 				votes: (file) => this.players.voteCounts(file),
 				exportFlutter: (file) => void exportToFlutter(this.app, this.stores, file),
 				pluginDir: this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
@@ -192,7 +191,7 @@ export default class HexLorePlugin extends Plugin {
 	}
 
 	/** The panel lives in the right sidebar; [reveal] brings it to the front. */
-	/** The header button: hide the panel when it is showing, else show it. */
+	/** The top bar's button: hide the panel when it is showing, else show it. */
 	async togglePanel(): Promise<void> {
 		const ws = this.app.workspace;
 		const leaf = ws.getLeavesOfType(INSPECTOR_VIEW)[0];
@@ -218,16 +217,6 @@ export default class HexLorePlugin extends Plugin {
 	}
 
 	/** The sections live in the left sidebar. */
-	async toggleSections(): Promise<void> {
-		const ws = this.app.workspace;
-		const leaf = ws.getLeavesOfType(SECTIONS_VIEW)[0];
-		if (leaf && !ws.leftSplit.collapsed && leaf.view.containerEl.isShown()) {
-			ws.leftSplit.collapse();
-			return;
-		}
-		await this.showSections(true);
-	}
-
 	async showSections(reveal: boolean): Promise<void> {
 		const ws = this.app.workspace;
 		let leaf = ws.getLeavesOfType(SECTIONS_VIEW)[0];

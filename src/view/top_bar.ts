@@ -1,13 +1,17 @@
 // The map view's top bar, mirroring the Flutter app's title bar (decision
-// 30): grouped by WHAT a control is about. Left = the map (its menu,
-// labelled with its name; quick jump; adventures; session notes). Centre =
-// the view switch (Hex | Sketch). Right = this session (undo / redo, reset
-// view, Display & overlays, the players split button). The tool strip stays
-// on the left of the map. Thin wiring: every action is the host's.
+// 30): grouped by WHAT a control is about. Left = fullscreen (the plugin's
+// own: Obsidian's chrome has no equivalent of a desktop window), then the map
+// (its menu, labelled with its name; quick jump; adventures; session notes).
+// Centre = the view switch (Hex | Sketch). Right = this session (undo / redo,
+// reset view, Display & overlays, the players split button), then the map
+// panel in the sidebar. The tool strip stays on the left of the map. Thin
+// wiring: every action is the host's.
 
 import { setIcon, setTooltip } from 'obsidian';
 
 export interface TopBarHost {
+	fullscreen(): boolean;
+	toggleFullscreen(): void;
 	mapName(): string;
 	hasEditor(): boolean;
 	sketching(): boolean;
@@ -30,6 +34,8 @@ export interface TopBarHost {
 	playersMenu(e: MouseEvent): void;
 	/** The Display & overlays panel, opened under its button. */
 	toggleDisplay(button: HTMLElement): void;
+	/** The map panel (right sidebar): show or hide it. */
+	togglePanel(): void;
 }
 
 export class TopBar {
@@ -40,6 +46,7 @@ export class TopBar {
 	private readonly undoBtn: HTMLElement;
 	private readonly redoBtn: HTMLElement;
 	private readonly playersBtn: HTMLElement;
+	private readonly fullscreenBtn: HTMLElement;
 	private readonly needsEditor: HTMLElement[] = [];
 
 	constructor(
@@ -51,7 +58,9 @@ export class TopBar {
 		const centre = this.el.createDiv({ cls: 'hexlore-topbar-group is-centre' });
 		const right = this.el.createDiv({ cls: 'hexlore-topbar-group is-right' });
 
-		// Left: the map.
+		// Left: fullscreen, then the map.
+		this.fullscreenBtn = this.icon(left, 'maximize', '', () => host.toggleFullscreen());
+		this.divider(left);
 		const mapBtn = left.createDiv({ cls: 'hexlore-topbar-button hexlore-topbar-map' });
 		setIcon(mapBtn.createSpan({ cls: 'hexlore-topbar-icon' }), 'folder');
 		this.name = mapBtn.createSpan({ cls: 'hexlore-topbar-name' });
@@ -83,6 +92,8 @@ export class TopBar {
 		const players = right.createDiv({ cls: 'hexlore-topbar-split' });
 		this.playersBtn = this.icon(players, 'cast', '', () => host.togglePlayers());
 		this.icon(players, 'chevron-down', 'Player options', (e) => host.playersMenu(e)).addClass('is-caret');
+		this.divider(right);
+		this.icon(right, 'panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => host.togglePanel());
 
 		// The bar sits over the map: its clicks must not reach the canvas.
 		for (const type of ['pointerdown', 'pointerup', 'contextmenu', 'wheel'] as const) this.el.addEventListener(type, (e) => e.stopPropagation());
@@ -114,6 +125,9 @@ export class TopBar {
 		this.redoBtn.toggleClass('is-disabled', !h.canRedo());
 		setTooltip(this.undoBtn, h.undoLabel() ? `Undo ${h.undoLabel()} (Ctrl+Z)` : 'Nothing to undo');
 		setTooltip(this.redoBtn, h.redoLabel() ? `Redo ${h.redoLabel()} (Ctrl+Shift+Z)` : 'Nothing to redo');
+		const full = h.fullscreen();
+		setIcon(this.fullscreenBtn, full ? 'minimize' : 'maximize');
+		setTooltip(this.fullscreenBtn, full ? 'Leave fullscreen (Esc)' : 'Fullscreen');
 		const running = h.playersRunning();
 		this.playersBtn.toggleClass('is-active', running);
 		setIcon(this.playersBtn, running ? 'radio' : 'cast');

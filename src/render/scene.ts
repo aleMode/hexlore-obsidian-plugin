@@ -6,6 +6,11 @@
 //
 // Built from the map model by scene_from_model.ts; edits replace a hex with
 // setHex() and bump the revision.
+//
+// Every change also records its DAMAGE: the scene rect whose pixels it can
+// alter, so cached images (tiles, the overview) redraw only that. A change
+// whose reach is not worked out (threads, overlays) bumps the EPOCH instead,
+// and everything cached starts over.
 
 import type { Feature, Terrain } from '../core/hex_data';
 import { terrainColors } from '../core/hex_data';
@@ -125,6 +130,9 @@ export interface RegionShape {
 	/** The contour: one segment per boundary edge. */
 	contour: [number, number, number, number][];
 	bbox: [number, number, number, number];
+	/** The hatch and the contour as paths, built on first use and kept with
+	 *  the shape (one Path2D, not one per paint). */
+	paths?: { hatch: Path2D; contour: Path2D };
 }
 
 /** How one cell is filled: the unjittered base (ink and texture tones derive
@@ -182,6 +190,64 @@ function bbox(pts: Point[]): [number, number, number, number] {
 	return [x0, y0, x1, y1];
 }
 
+/** A scene rect as [x0, y0, x1, y1]. */
+export type Box = [number, number, number, number];
+
+/** How far from its centre anything a hex draws can reach: objects stand
+ *  over the hex edge and labels overhang it. The painter's one-cell cull pad
+ *  makes the same assumption. */
+const HEX_REACH = 2 * R;
+/** A hex's change reaches its six neighbours (edges, coast haloes, blend
+ *  strips and masks) and whatever they draw. */
+const HEX_DAMAGE = Math.sqrt(3) * R + HEX_REACH;
+/** A line's change reaches past its anchors: the curve's overshoot and
+ *  casing, or a mouth's spill (R), and the objects it clears or lets stand
+ *  again, which stand on it — so their cells' centres are within R of it —
+ *  and draw within HEX_REACH of those. */
+const LINE_DAMAGE = 2 * R + HEX_REACH;
+/** Damage entries kept; a consumer further behind starts over. */
+const DAMAGE_LOG_MAX = 4096;
+
+export function boxesOverlap(a: Box, b: Box): boolean {
+	return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+}
+
+function around(x: number, y: number, pad: number): Box {
+	return [x - pad, y - pad, x + pad, y + pad];
+}
+
+function grow(b: Box, pad: number): Box {
+	return [b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad];
+}
+
+function sameSet<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+	if (a.size !== b.size) return false;
+	for (const x of a) if (!b.has(x)) return false;
+	return true;
+}
+
+function sameOverlays(a: Overlays, b: Overlays): boolean {
+	return (
+		a.threads === b.threads &&
+		a.threadStyle === b.threadStyle &&
+		a.regions === b.regions &&
+		a.borders === b.borders &&
+		a.gmFog === b.gmFog &&
+		a.badges === b.badges &&
+		sameSet(a.hiddenThreadColors, b.hiddenThreadColors) &&
+		sameSet(a.hiddenRegions, b.hiddenRegions)
+	);
+}
+
+/** The entries of [a] and [b] that are not in both (moved, edited, added or
+ *  removed), compared by content: a line or region has no other identity
+ *  the renderer can trust. */
+function changed<T>(a: T[], b: T[]): T[] {
+	const keyed = (xs: T[]) => new Map(xs.map((x) => [JSON.stringify(x), x]));
+	const ka = keyed(a), kb = keyed(b);
+	return [...ka].filter(([k]) => !kb.has(k)).concat([...kb].filter(([k]) => !ka.has(k))).map(([, x]) => x);
+}
+
 export function anchorPixel(a: Anchor): Point {
 	const [kind, q, r, k] = a;
 	const [cx, cy] = axialToPixel(q, r);
@@ -196,8 +262,10 @@ export function anchorPixel(a: Anchor): Point {
 }
 
 export class MapScene {
-	/** Bumped by every change; tiles and caches key on it. */
+	/** Bumped by every change. */
 	revision = 0;
+	/** Bumped by a change with no recorded damage: cached images start over. */
+	epoch = 0;
 	readonly name: string;
 	readonly format: number;
 	readonly grid: GridWindow;
@@ -218,6 +286,9 @@ export class MapScene {
 	private markCache = new Map<string, { pebbles: number[]; ticks: number[] }>();
 	private regionCache = new Map<string, { key: string; shape: RegionShape }>();
 	private threadCache: Map<string, ThreadShape> | null = null;
+	/** What each revision after [damageFloor] touched, oldest first. */
+	private damage: { revision: number; box: Box }[] = [];
+	private damageFloor = 0;
 
 	constructor(data: MapData) {
 		this.name = data.name;
@@ -242,46 +313,101 @@ export class MapScene {
 	setHex(h: SceneHex): void {
 		const key = cellKey(h.q, h.r);
 		const wasWater = this.group(h.q, h.r) === SPEC.groupWater;
+		const group = SPEC.terrainGroup(h.terrain);
+		const damage = this.hexDamage(h.q, h.r, wasWater || group === SPEC.groupWater);
 		this.hexes.set(key, h);
 		this.lookCache.clean.delete(key);
 		this.lookCache.illustrated.delete(key);
-		const group = SPEC.terrainGroup(h.terrain);
 		this.groupCache?.set(key, group);
 		if (wasWater !== (group === SPEC.groupWater)) this.riverCache = null;
-		this.revision++;
+		this.touch(damage);
+	}
+
+	/** What a change to hex (q, r) can alter. A water hex also reaches the
+	 *  rivers near it: their courses are cut at the shore, and their mouths
+	 *  take the water's fill. Called BEFORE the change, while the rivers are
+	 *  still laid out as they are on screen. */
+	private hexDamage(q: number, r: number, water: boolean): Box[] {
+		const [cx, cy] = axialToPixel(q, r);
+		const near = around(cx, cy, HEX_DAMAGE);
+		const out = [near];
+		if (water) {
+			for (const g of this.riverGeometry()) if (boxesOverlap(g.bbox, near)) out.push(grow(g.bbox, R));
+		}
+		return out;
 	}
 
 	/** Rivers and routes changed. */
 	setLines(rivers: SceneRiver[], routes: SceneRoute[]): void {
+		const reach = (anchors: Anchor[]) => (anchors.length ? grow(bbox(anchors.map(anchorPixel)), LINE_DAMAGE) : null);
+		const damage = [...changed(this.rivers, rivers), ...changed(this.routes, routes)]
+			.map((l) => reach(l.anchors))
+			.filter((b): b is Box => b !== null);
 		this.rivers = rivers;
 		this.routes = routes;
 		this.riverCache = this.routeCache = this.obstacleCache = null;
 		this.markCache.clear();
-		this.revision++;
+		this.touch(damage);
 	}
 
 	setRegions(regions: SceneRegion[]): void {
+		const damage: Box[] = [];
+		for (const g of changed(this.regions, regions)) {
+			// The contour's casing straddles the outer edges.
+			if (g.cells.length) damage.push(grow(bbox(g.cells.map(([q, r]) => axialToPixel(q, r))), R + 8));
+		}
 		this.regions = regions;
-		this.revision++;
+		this.touch(damage);
 	}
 
 	setThreads(threads: SceneThread[]): void {
 		this.threads = threads;
 		this.threadCache = null;
-		this.revision++;
+		this.touchAll(); // the courses fan out around each other, map-wide
 	}
 
 	setOverlays(o: Overlays): void {
+		// Every display change re-applies the overlays of every open map: an
+		// unchanged set must not start a new epoch (every tile redrawn).
+		if (sameOverlays(this.overlays, o)) return;
 		this.overlays = o;
 		this.threadCache = null;
+		this.touchAll();
+	}
+
+	/** The scene rects changed since [revision], or null when that is not
+	 *  known (an epoch change, or too far back): redraw everything. */
+	damageSince(revision: number): Box[] | null {
+		if (revision < this.damageFloor) return null;
+		const out: Box[] = [];
+		for (let i = this.damage.length - 1; i >= 0 && this.damage[i]!.revision > revision; i--) out.push(this.damage[i]!.box);
+		return out;
+	}
+
+	private touch(boxes: Box[]): void {
 		this.revision++;
+		for (const box of boxes) this.damage.push({ revision: this.revision, box });
+		if (this.damage.length > DAMAGE_LOG_MAX) {
+			const dropped = this.damage.splice(0, this.damage.length - DAMAGE_LOG_MAX / 2);
+			this.damageFloor = dropped[dropped.length - 1]!.revision;
+		}
+	}
+
+	private touchAll(): void {
+		this.revision++;
+		this.epoch++;
+		this.damage = [];
+		this.damageFloor = this.revision;
 	}
 
 	/** A region's contour and hatch, cached until its cells change. */
 	regionShape(g: SceneRegion): RegionShape {
 		const key = g.cells.map(([q, r]) => `${q},${r}`).join(';');
 		const hit = this.regionCache.get(g.id);
-		if (hit && hit.key === key) return { ...hit.shape, region: g };
+		if (hit && hit.key === key) {
+			hit.shape.region = g; // its colour or name may have changed, not its cells
+			return hit.shape;
+		}
 		const hatch = regionHatchSegments(g.cells, 11);
 		const contour = boundaryEdges(g.cells).map(([a, b]) => {
 			const [ax, ay] = vertexPixel(a[0], a[1], a[2]);
@@ -322,12 +448,13 @@ export class MapScene {
 		const key = cellKey(q, r);
 		if (!this.hexes.has(key)) return;
 		const wasWater = this.group(q, r) === SPEC.groupWater;
+		const damage = this.hexDamage(q, r, wasWater);
 		this.hexes.delete(key);
 		this.lookCache.clean.delete(key);
 		this.lookCache.illustrated.delete(key);
 		this.groupCache?.delete(key);
 		if (wasWater) this.riverCache = null;
-		this.revision++;
+		this.touch(damage);
 	}
 
 	isRevealed(q: number, r: number): boolean {
@@ -340,7 +467,7 @@ export class MapScene {
 			if (revealed(q, r)) this.revealed.add(cellKey(q, r));
 			else this.revealed.delete(cellKey(q, r));
 		}
-		if (cells.length) this.revision++;
+		if (cells.length) this.touch(cells.map(([q, r]) => around(...axialToPixel(q, r), R))); // the badges
 	}
 
 	/** Terrain group of a cell (none for an empty one). */

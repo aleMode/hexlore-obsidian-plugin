@@ -86,9 +86,63 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
     model by `scene_from_model.ts`); `painter.ts` paints a scene RECT
     (culled, with the GM canvas's LOD: <6 px coarse, <14 px fills and
     borders, else stamps / textures / labels); `tiles.ts` + `map_canvas.ts`
-    are decisions 23/23b: pan draws 512-px tiles, zoom stretches what is
-    held and settles into a new set progressively, an edit renders directly
-    until quiet.
+    are decisions 23/23b: pan draws 256-px tiles (a few per frame scroll in:
+    an Illustrated tile is mostly raster work AFTER the frame), zoom
+    stretches what is held and settles into a new set progressively.
+  - EDITS: an edit to hexes, lines, regions or fog records its DAMAGE in the
+    scene (a scene rect; the reach constants in `scene.ts`), and only the
+    tiles and overview bands it touches are redrawn — the visible ones in
+    the same frame, neighbouring tiles as ONE paint cut into tiles
+    (`renderMany`). A change with no damage (threads, overlays) bumps the
+    scene's EPOCH and renders directly until quiet; re-applying the same
+    overlays is no change, and the first epoch a canvas sees after
+    `setScene` is not an edit. Change what the painter draws beyond a hex
+    and `test/tile_damage.test.ts` (every tile traced before and after each
+    kind of edit, `test/helpers/tracing_canvas.ts`) tells you if the reach
+    must grow; its block parity test checks a tile cut from a block equals
+    the tile alone (so nothing a tile needs is culled away).
+  - CULLING: a paint costs every river and road crossing its rect, so the
+    painter culls road marks, a split river's clip hexes and its mouths to
+    the rect, and strokes only the CHUNKS of a solid (undashed, round-capped)
+    course that can reach it (`smoothCourse`: one stroke call, so the union
+    is the whole stroke). A dashed line is stroked whole. Blend strips (a
+    gradient and a polygon per edge) are made once per edge and fill pair
+    and kept (`strips`): a gradient is not tied to the context that made it.
+  - RASTERS (`textures.ts`): SPRITES (Clean stamps, feature glyphs,
+    feature objects; labels stay vector) live in shelf-packed 2048² ATLAS
+    pages, evicted whole: drawn once, blitted per hex (Clean direct frames
+    50 → 17 ms between frames). Illustrated texture SLICES are in pages
+    too, and a paint MAKES EVERY RASTER IT DRAWS FIRST (`prepare`,
+    `sprites`): making one into a page the paint had already drawn from
+    flushed the page each time (150 ms between frames); a canvas each
+    measured worse in direct frames (no batching across canvases). Rasters
+    are drawn on a CPU canvas (`willReadFrequently`) and copied into their
+    page (`putImageData`, `cpuRaster`): a cold pan makes 500–900, each
+    dozens of small paths the GPU process rasterised slowly (cold
+    Illustrated pan: 34 ms between frames and 9% dropped on the GPU, 17 ms
+    and 2% in software). Sprite boxes are
+    worked out only when a sprite is made (a paint asks for each twice). Tiles held as ImageBitmaps were tried
+    too: no difference. Texture resolution and object LOD have hysteresis
+    (`resolution()`); a frame makes at most 8 new rasters, past that another
+    resolution's raster stands in and the tile is SOFT, redone while idle.
+    Sprites sit in ⅛-octave zoom buckets. Dropped canvases are released at
+    once (size 0); tiles come from a pool and are opaque. CAPACITY matters:
+    a 1080p Illustrated + Blend view at zoom 1 needs ~11M px of slices; a
+    cache smaller than the view and its ring evicts what it then draws
+    again, every frame (350 ms frames measured; a test holds it).
+    Pre-warming never evicts: it stops when the cache is nearly full.
+  - IDLE WORK runs in `requestIdleCallback`, ONE piece per callback (in the
+    frame without it, and in the benchmark): its cost is raster work the
+    deadline cannot see. Soft visible tiles; the prefetch ring, each tile's
+    new textures made a frame's budget at a time BEFORE the tile (a cold
+    tile's few dozen at once dropped frames of a pan); the textures of the
+    ring past it (`painter.warm`, only once the camera has been still for
+    500 ms: during a pan its GPU work landed between frames); the
+    overview. The overlay repaints at
+    most once a frame (`paintOverlay`; `paintOverlayNow` to force).
+  - The map view tells the map panel about a STROKE once, when it ends (the
+    panel rebuilds its DOM on every broadcast), and a change of linked notes
+    updates only the hexes whose links came or went (`relinkScene`).
 - `src/edit/` — editing (item 2.4), no Obsidian import: `editor.ts` (every
   map change: paint strokes, names, fog + line of sight, feature secrecy,
   rivers / routes point by point (`core/line_edit.ts`, decision 8c: a drag
@@ -111,11 +165,18 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   with previews drawn by the renderer's own `paintBiomeStamp` / `paintGlyph`
   via `pick_preview.ts`; erasers in a section of their own); a river's
   width is in its right-click menu (presets + exact), not the sidebar; `top_bar.ts`
-  mirrors Flutter's title bar (decision 30: left = the map menu, quick jump
-  Ctrl+K, adventures, session notes; centre = Hex | Sketch; right = undo /
-  redo, reset view Ctrl+0, Display & overlays, the players split button),
-  its dialogs in `map_menus.ts` — keep its menus and entries in step with
-  Flutter's; `display_panel.ts` is its Display & overlays popover (Flutter's
+  mirrors Flutter's title bar (decision 30: left = fullscreen, the map menu,
+  quick jump Ctrl+K, adventures, session notes; centre = Hex | Sketch;
+  right = undo / redo, reset view Ctrl+0, Display & overlays, the players
+  split button, the map panel), its dialogs in `map_menus.ts` — keep its
+  menus and entries in step with Flutter's. Fullscreen and the map panel
+  button are the plugin's own (Flutter has a window, not a sidebar).
+  ONE PLACE PER ACTION: the tab header adds only "Open as Markdown" and the
+  "⋯" pane menu adds nothing; anything for the map goes in the top bar or
+  its menus. Fullscreen moves the view's `contentEl` into `<body>` (fixed,
+  under hover previews / modals / menus) and asks for document fullscreen;
+  it ends on the button, Esc with nothing else to clear, another leaf
+  becoming active, or the map panel button; `display_panel.ts` is its Display & overlays popover (Flutter's
   `overlay_panel.dart`: overlays per MAP, display per DEVICE, pills for
   one-or-the-other choices). ONE PLACE PER SETTING: what the map shows lives
   only there, never again in the sidebar or the settings tab;
@@ -125,7 +186,13 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   ("Open as Markdown" to go back).
 - Input (as Flutter's canvas): left-drag = the tool (select: rubber band);
   middle-drag / Space+drag / trackpad scroll pan; wheel and pinch zoom;
-  right-click = cell menu. Raw pointer events only.
+  right-click = cell menu. Raw pointer events only. Wheel vs trackpad is
+  guessed per GESTURE (`view/wheel_intent.ts`): one trackpad-looking event
+  makes the rest of the gesture pan; never judge events one by one. Space
+  counts with the view focused OR the pointer over the map with focus on
+  nothing (a tool click moves focus off the map), never in a text field or
+  on a control elsewhere; listened in the capture phase. The wheel readout
+  is in "Pen and trackpad diagnostics…" (map menu → HexLore).
 - Notes (item 2.5): `src/notes/note_meta.ts` (pure) holds the note
   CONVENTIONS — `type: npc | quest | place` in the frontmatter, Flutter's NPC
   and quest fields under the same names, `location` = link(s) to PLACE NOTES
@@ -221,8 +288,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `getSettingDefinitions` (Obsidian 1.13): only what has no better home
   (the templates folder); `playerLan` is stored here, switched from the
   players menu.
-- `src/dev/` — the synthetic 100×100 map and the renderer benchmark (pane
-  menu → "Benchmark the renderer"); keep it to compare renderer changes.
+- `src/dev/` — the synthetic 100×100 map and the renderer benchmark (map
+  menu → HexLore → "Benchmark the renderer"); keep it to compare renderer changes.
 
 ## The `.hexmap.md` index (grammar v1, `hexlore-index: 1`)
 
