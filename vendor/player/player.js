@@ -77,8 +77,8 @@ function* cellsInGridWindow() {
 function* cellsInView() {
   const g = state.grid;
   if (!g) return;
-  const left = (0 - view.ox) / view.scale, right = (canvas.width - view.ox) / view.scale;
-  const top = (0 - view.oy) / view.scale, bottom = (canvas.height - view.oy) / view.scale;
+  const left = (0 - view.ox) / view.scale, right = (viewW - view.ox) / view.scale;
+  const top = (0 - view.oy) / view.scale, bottom = (viewH - view.oy) / view.scale;
   const colW = R * 1.5, rowH = R * SQRT3;
   const qLo = Math.max(Math.floor(left / colW) - 1, g.min_q);
   const qHi = Math.min(Math.ceil(right / colW) + 1, g.min_q + g.cols - 1);
@@ -137,10 +137,32 @@ function hexCorners(cx, cy) {
   return pts;
 }
 
+// The canvas in CSS px (viewW × viewH) and its backing store in device px
+// (× dpr), so a phone or a HiDPI screen gets a sharp map instead of one
+// stretched 2–3×. Everything below draws in CSS px; render() sets the scale.
+let dpr = 1, viewW = 0, viewH = 0;
+
 function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  render();
+  dpr = window.devicePixelRatio || 1;
+  viewW = canvas.clientWidth;
+  viewH = canvas.clientHeight;
+  canvas.width = Math.round(viewW * dpr);
+  canvas.height = Math.round(viewH * dpr);
+  renderNow(); // resizing cleared the canvas: don't leave it blank a frame
+}
+
+// The scene rect on screen, grown by `pad` scene px on every side.
+function viewRect(pad) {
+  return {
+    l: -view.ox / view.scale - pad,
+    t: -view.oy / view.scale - pad,
+    r: (viewW - view.ox) / view.scale + pad,
+    b: (viewH - view.oy) / view.scale + pad,
+  };
+}
+
+function inRect(rect, p) {
+  return p.x >= rect.l && p.x <= rect.r && p.y >= rect.t && p.y <= rect.b;
 }
 
 function worldToScreen(x, y) {
@@ -161,8 +183,8 @@ function centerOnContent() {
     minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
   }
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  view.ox = canvas.width / 2 - cx * view.scale;
-  view.oy = canvas.height / 2 - cy * view.scale;
+  view.ox = viewW / 2 - cx * view.scale;
+  view.oy = viewH / 2 - cy * view.scale;
 }
 
 // River stroke constants; mirror app/river_item.py (border/water/glint).
@@ -243,7 +265,7 @@ function drawRivers(groups, fills) {
   };
   const clipToLand = () => {
     ctx.beginPath();
-    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.rect(0, 0, viewW, viewH);
     addHexes(nearWater.values(), true);
     ctx.clip("nonzero");
   };
@@ -675,6 +697,7 @@ function textureCanvas(key, variant, pick, slot, lod, ground, slice, px, obstacl
 function drawBlendStrips(fills, groups) {
   const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   for (const [key, f] of fills) {
+    if (!f.on) continue;
     const h = f.h;
     if ((groups.get(key) || SPEC.groupNone) === SPEC.groupNone) continue;
     for (let k = 0; k < 6; k++) {
@@ -711,7 +734,18 @@ function drawBlendStrips(fills, groups) {
 // halfWidth], indexed by the cells whose objects they can touch (along the
 // segment plus neighbours, since a canopy overhangs). Mirrors
 // _HexMapPainter._obstacleSegments: a river's bank width, a route's base width.
+// It depends on the payload only, so it is built once per payload, not per
+// frame (a pan redraws every frame).
+let obstacleCache = { state: null, map: null };
+
 function obstacleSegmentsByCell() {
+  if (obstacleCache.state !== state) {
+    obstacleCache = { state, map: buildObstacleSegments() };
+  }
+  return obstacleCache.map;
+}
+
+function buildObstacleSegments() {
   const out = new Map();
   const addPolyline = (pts, halfWidth) => {
     for (let i = 0; i + 1 < pts.length; i++) {
@@ -758,9 +792,10 @@ function hexTexture(h, variant, ground, obstacleSegments, blendMask) {
     obstacles,
     obstacleKey: obstacles.map((o) => [o.x1, o.y1, o.x2, o.y2, o.halfWidth].join(",")).join(";"),
     h, variant, ground, rs, c,
-    // Offscreen resolution: the next power of two at or above the screen
-    // size, so zooming reuses a handful of canvases instead of one per level.
-    px: Math.min(256, Math.max(16, 2 ** Math.ceil(Math.log2(Math.max(1, rs))))),
+    // Offscreen resolution: the next power of two at or above the size in
+    // DEVICE px, so zooming reuses a handful of canvases instead of one per
+    // level, and a HiDPI screen gets textures as sharp as its hexes.
+    px: Math.min(256, Math.max(16, 2 ** Math.ceil(Math.log2(Math.max(1, rs * dpr))))),
     lod: TEX.textureLodBucket(rs),
     pick: TEX.texturePick(h.q, h.r, variant.layouts.length),
     slot: h.feature ? TEX.featureSlotFor(h.q, h.r) : null,
@@ -942,11 +977,14 @@ function cellKey(q, r) {
 // Stroke every cell outline once, quiet inside a terrain mass and heavier
 // where the group changes. Mirrors _paintCellEdges in app/hex_map.dart: each
 // edge is drawn by its canonical owner only, so the alphas land as specified
-// instead of compounding where both sides are present.
-function drawCellEdges(groups) {
+// instead of compounding where both sides are present. Culled to `rect`: the
+// strokes are the same, though a smaller path can tip the rasteriser into
+// another antialiasing method, so a few corner pixels may differ by a shade.
+function drawCellEdges(groups, rect) {
   const quiet = [], boundary = [], coast = [];
   for (const h of state.hexes) {
     const c = axialToPixel(h.q, h.r);
+    if (!inRect(rect, c)) continue;
     const mine = SPEC.terrainGroup(h.terrain);
 
     // Coast halo belongs to the water cell, not to a shared edge, so it looks
@@ -1092,7 +1130,7 @@ function roadMarksFor(route, seg, style, scenePts) {
 
 function drawRoutes(illustrated) {
   const roads = [], borders = [];
-  const W = canvas.width, H = canvas.height;
+  const W = viewW, H = viewH;
   for (const route of state.routes || []) {
     const style = SPEC.roadStyleOf(route.kind);
     const w = route.width || 1;
@@ -1190,26 +1228,43 @@ function drawRoutes(illustrated) {
   ctx.setLineDash([]);
 }
 
+// Redraws are coalesced to one per frame: pointer and wheel events arrive
+// faster than the display refreshes, and a full repaint per event made a pan
+// or a hover lag behind the pointer on a big map or a slow phone.
+let frameRequest = 0;
+
 function render() {
+  if (frameRequest) return;
+  frameRequest = requestAnimationFrame(() => {
+    frameRequest = 0;
+    renderNow();
+  });
+}
+
+function renderNow() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Per-hex drawing is culled to the screen. The pad covers what reaches
+  // past a hex's own outline: Illustrated canopies, feature objects, coast.
+  const onScreen = viewRect(R * 2.5);
 
   // 0. The unexplored grid, under everything: voting targets any cell, so the
   //    lattice has to be visible and clickable even where nothing is revealed.
   drawGridLattice(revealedKeys);
 
   // 1. Hex fills. Outlines come after, in one weighted pass (step 1b), so a
-  //    shared edge is stroked exactly once.
+  //    shared edge is stroked exactly once. Groups and fills are known for
+  //    EVERY hex (outlines, river mouths and blend strips look at
+  //    neighbours); only the visible ones are drawn.
   const groups = new Map();
   const illustrated = mapStyle === "illustrated";
   const textured = []; // hexes whose objects draw after rivers and roads
-  const fills = new Map(); // cellKey -> {h, base, drawn, variant}
+  const fills = new Map(); // cellKey -> {h, base, drawn, variant, on}
   const obstacleSegments = illustrated ? obstacleSegmentsByCell() : new Map();
   for (const h of state.hexes) {
     const c = axialToPixel(h.q, h.r);
-    ctx.beginPath();
-    const corners = hexCorners(c.x, c.y).map((p) => worldToScreen(p[0], p[1]));
-    corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-    ctx.closePath();
     // Painted terrain gets a per-cell lightness wobble so a field of one
     // biome doesn't read as a component grid; the empty background doesn't.
     // Illustrated: the fill is the texture's GROUND colour (still derived
@@ -1219,10 +1274,16 @@ function render() {
     const base = h.color || DEFAULT_FILL;
     const ground = variant ? TEX.textureGroundFill(base, variant) : base;
     const drawn = painted ? SPEC.jitterFill(ground, h.q, h.r) : ground;
+    const on = inRect(onScreen, c);
+    groups.set(cellKey(h.q, h.r), SPEC.terrainGroup(h.terrain));
+    fills.set(cellKey(h.q, h.r), { h, base: ground, drawn, variant, on });
+    if (!on) continue;
+    ctx.beginPath();
+    const corners = hexCorners(c.x, c.y).map((p) => worldToScreen(p[0], p[1]));
+    corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
     ctx.fillStyle = drawn;
     ctx.fill();
-    groups.set(cellKey(h.q, h.r), SPEC.terrainGroup(h.terrain));
-    fills.set(cellKey(h.q, h.r), { h, base: ground, drawn, variant });
   }
 
   // 1a. Blend: colour gradients across borders, over the flat fills and under
@@ -1231,7 +1292,7 @@ function render() {
 
   // 1a'. Illustrated ground marks (clipped), now that every fill is down.
   for (const [key, f] of fills) {
-    if (!f.variant) continue;
+    if (!f.variant || !f.on) continue;
     const h = f.h;
     const mask = blendEdges
       ? TEX.blendMaskFor(groups.get(key), (k) => {
@@ -1248,7 +1309,7 @@ function render() {
   //     _paintCellEdges). Only revealed hexes exist here, so the fog frontier
   //     always reads as a boundary — which is wanted: it frames what the party
   //     has actually seen.
-  drawCellEdges(groups);
+  drawCellEdges(groups, onScreen);
 
   // 1c. Hover ring, above the outlines so it is never half-buried.
   if (hover) {
@@ -1269,6 +1330,7 @@ function render() {
   //     Illustrated: a textured hex already drew its feature inside its
   //     texture; an unpainted hex's feature is drawn as an object.
   for (const h of state.hexes) {
+    if (!fills.get(cellKey(h.q, h.r)).on) continue;
     const painted = h.terrain && h.terrain !== "default";
     if (illustrated) {
       if (painted && TEX.variantFor(h.terrain, h.terrain_variant)) continue;
@@ -1311,9 +1373,12 @@ function render() {
   ctx.textBaseline = "middle";
   ctx.font = `600 ${SPEC.labelFontSize * view.scale}px system-ui, sans-serif`;
   ctx.lineJoin = "round";
+  // A label can be much wider than its hex: a generous pad, not the hex one.
+  const labelRect = viewRect(R * 8);
   for (const h of state.hexes) {
     if (!h.name) continue;
     const c = axialToPixel(h.q, h.r);
+    if (!inRect(labelRect, c)) continue;
     const s = worldToScreen(c.x, c.y - R * SPEC.labelOffset);
     ctx.strokeStyle = SPEC.labelHalo;
     ctx.lineWidth = SPEC.labelHaloWidth * view.scale;
@@ -1327,47 +1392,160 @@ function render() {
 }
 
 // ----- interaction --------------------------------------------------------
-let dragging = false, lastX = 0, lastY = 0;
-let pressX = 0, pressY = 0, moved = 0;
+// The same input model as the GM canvases (the Obsidian plugin's map view and
+// wheel_intent.ts; Flutter's trackpad handling): a mouse wheel zooms, a
+// trackpad's two-finger scroll PANS, a pinch zooms — on a trackpad
+// (Ctrl+wheel in Chromium/Firefox, gesture events in Safari) and on a touch
+// screen (two pointers).
+const MIN_SCALE = 0.2, MAX_SCALE = 4;
 
 // Below this much pointer travel a press counts as a click (a vote), not a
 // pan. Touch drifts a few px even on a deliberate tap.
 const CLICK_SLOP = 6;
 
+function zoomAt(sx, sy, factor) {
+  const ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+  view.ox = sx - (sx - view.ox) * (ns / view.scale);
+  view.oy = sy - (sy - view.oy) * (ns / view.scale);
+  view.scale = ns;
+  render();
+}
+
+function panBy(dx, dy) {
+  view.ox += dx;
+  view.oy += dy;
+  render();
+}
+
+function hideTooltip() {
+  tooltip.hidden = true;
+}
+
+// Pointers down on the map, id -> {x, y}. One pans (or, released about where
+// it went down, votes); two pinch-zoom about their midpoint and pan. Each
+// pointer pans by its OWN last position: one shared "last" point made the
+// view jump between two fingers.
+const pointers = new Map();
+let pressX = 0, pressY = 0, moved = 0;
+let pinch = null;    // {dist, cx, cy} while two pointers are down
+let pinched = false; // this press became a pinch: lifting it is not a vote
+
+function pinchState() {
+  const [a, b] = [...pointers.values()];
+  return { dist: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+}
+
 canvas.addEventListener("pointerdown", (e) => {
-  dragging = true; lastX = e.clientX; lastY = e.clientY;
-  pressX = e.clientX; pressY = e.clientY; moved = 0;
+  if (e.pointerType === "mouse" && e.button !== 0) return; // only the main button
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   canvas.setPointerCapture(e.pointerId);
+  hideTooltip();
+  if (pointers.size === 1) {
+    pressX = e.clientX; pressY = e.clientY; moved = 0;
+    pinched = false;
+  } else {
+    pinched = true;
+    pinch = pinchState();
+  }
 });
+
+function liftPointer(e) {
+  if (!pointers.delete(e.pointerId)) return false;
+  pinch = pointers.size >= 2 ? pinchState() : null;
+  return true;
+}
+
 canvas.addEventListener("pointerup", (e) => {
-  dragging = false;
-  if (moved <= CLICK_SLOP) {
+  if (!liftPointer(e)) return;
+  if (pointers.size === 0 && !pinched && moved <= CLICK_SLOP) {
     const cell = cellAtScreen(e.clientX, e.clientY);
     if (cell) toggleVote(cell.q, cell.r);
   }
 });
-canvas.addEventListener("pointercancel", () => (dragging = false));
+canvas.addEventListener("pointercancel", liftPointer);
+
 canvas.addEventListener("pointermove", (e) => {
-  if (dragging) {
-    moved = Math.max(moved, Math.hypot(e.clientX - pressX, e.clientY - pressY));
-    view.ox += e.clientX - lastX;
-    view.oy += e.clientY - lastY;
-    lastX = e.clientX; lastY = e.clientY;
-    render();
-  } else {
-    updateHover(e.clientX, e.clientY);
+  const last = pointers.get(e.pointerId);
+  if (!last) {
+    if (e.pointerType !== "touch") updateHover(e.clientX, e.clientY);
+    return;
   }
+  const x = e.clientX, y = e.clientY;
+  pointers.set(e.pointerId, { x, y });
+  if (pinch) {
+    const next = pinchState();
+    view.ox += next.cx - pinch.cx;
+    view.oy += next.cy - pinch.cy;
+    zoomAt(next.cx, next.cy, next.dist / pinch.dist);
+    pinch = next;
+    return;
+  }
+  moved = Math.max(moved, Math.hypot(x - pressX, y - pressY));
+  panBy(x - last.x, y - last.y);
 });
+
+canvas.addEventListener("pointerleave", (e) => {
+  if (pointers.size || e.pointerType === "touch" || !hover) return;
+  hover = null;
+  hideTooltip();
+  render();
+});
+
+// What a wheel event means: pan or zoom. Mirrors the plugin's
+// WheelClassifier (obsidian-plugin/src/view/wheel_intent.ts) — keep the two
+// in step. The browser does not say which device sent a wheel event, so it
+// is judged per GESTURE: events under WHEEL_GESTURE_GAP_MS apart are one
+// gesture, and once one of them looks like a trackpad (sideways, fractional
+// or small) the rest of that gesture pans. Judged event by event, a fast
+// swipe's large whole-number steps read as wheel notches and zoomed mid-pan.
+const WHEEL_GESTURE_GAP_MS = 300;
+const WHEEL_NOTCH_MIN = 50; // a mouse notch is ±100 px (more when scaled), or lines
+let wheelLast = -Infinity, wheelTrackpad = false;
+
+function wheelIntent(e) {
+  if (e.timeStamp - wheelLast > WHEEL_GESTURE_GAP_MS) wheelTrackpad = false;
+  wheelLast = e.timeStamp;
+  if (e.ctrlKey) return "zoom"; // a pinch, or Ctrl+wheel
+  if (e.deltaMode !== 0) return "zoom"; // lines or pages: a wheel
+  if (e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < WHEEL_NOTCH_MIN) {
+    wheelTrackpad = true;
+  }
+  return wheelTrackpad ? "pan" : "zoom";
+}
+
+// Safari reports a trackpad pinch as gesture events, not Ctrl+wheel.
+let safariGesture = null; // the last gesture scale while one is under way
+
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
-  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-  const ns = Math.min(4, Math.max(0.2, view.scale * factor));
-  // zoom toward the cursor
-  view.ox = e.clientX - (e.clientX - view.ox) * (ns / view.scale);
-  view.oy = e.clientY - (e.clientY - view.oy) * (ns / view.scale);
-  view.scale = ns;
-  render();
+  hideTooltip();
+  if (wheelIntent(e) === "pan") {
+    panBy(-e.deltaX, -e.deltaY);
+    return;
+  }
+  if (e.ctrlKey && safariGesture !== null) return; // the gesture events zoom
+  // Zoom in proportion to the delta, so a pinch's many small steps and a
+  // wheel's few big ones both feel right (a fixed step per event made a
+  // pinch fly).
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+  zoomAt(e.clientX, e.clientY, Math.pow(1.15, (-dy / 100) * (e.ctrlKey ? 3 : 1)));
 }, { passive: false });
+
+canvas.addEventListener("gesturestart", (e) => {
+  e.preventDefault();
+  safariGesture = 1;
+});
+canvas.addEventListener("gesturechange", (e) => {
+  e.preventDefault();
+  // iOS sends these for a touch pinch too, which the pointers already zoom.
+  if (safariGesture === null || pointers.size) return;
+  zoomAt(e.clientX, e.clientY, e.scale / safariGesture);
+  safariGesture = e.scale;
+});
+canvas.addEventListener("gestureend", (e) => {
+  e.preventDefault();
+  safariGesture = null;
+});
 
 // Screen point -> the in-grid cell under it (revealed or not), or null.
 function cellAtScreen(sx, sy) {
@@ -1378,12 +1556,11 @@ function cellAtScreen(sx, sy) {
 
 function updateHover(sx, sy) {
   const cell = cellAtScreen(sx, sy);
+  const same = cell && hover ? cell.q === hover.q && cell.r === hover.r : !cell && !hover;
   hover = cell ? { ...cell, hex: hexAt(cell.q, cell.r) } : null;
   if (hover) {
     const found = hover.hex;
     tooltip.hidden = false;
-    tooltip.style.left = sx + 12 + "px";
-    tooltip.style.top = sy + 12 + "px";
     // textContent, not innerHTML: hex names are data, never markup
     const title = document.createElement("h4");
     title.textContent = found ? found.name || found.display_id : "Unexplored";
@@ -1396,10 +1573,15 @@ function updateHover(sx, sy) {
       ? `${terrain ? terrain + " — " : ""}votes: ${voted.names.join(", ")}`
       : terrain || "Click to vote to travel here";
     tooltip.replaceChildren(title, line);
+    // Beside the pointer, flipped to the other side near the right or
+    // bottom edge so it never runs off screen.
+    const w = tooltip.offsetWidth, hgt = tooltip.offsetHeight;
+    tooltip.style.left = (sx + 12 + w > viewW ? Math.max(0, sx - 12 - w) : sx + 12) + "px";
+    tooltip.style.top = (sy + 12 + hgt > viewH ? Math.max(0, sy - 12 - hgt) : sy + 12) + "px";
   } else {
     tooltip.hidden = true;
   }
-  render();
+  if (!same) render(); // the hover ring only moves when the cell does
 }
 
 // ----- travel votes -------------------------------------------------------
@@ -1416,18 +1598,37 @@ let votes = { voters: 0, tally: [], your_hex: null };
 // An opaque per-browser id so a reload keeps (and can change) the same vote
 // instead of stacking a second one. Never displayed; the name is what people
 // see.
+// Storage can be blocked (a privacy setting, some embedded browsers): an
+// uncaught throw here stopped the whole page loading. Without it the vote
+// simply lasts until the page is reloaded.
+function stored(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+function store(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {
+    /* storage blocked: kept for this visit only */
+  }
+}
+
 const voterId = (() => {
-  let id = localStorage.getItem("hexlore.voter");
+  let id = stored("hexlore.voter");
   if (!id) {
     id = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem("hexlore.voter", id);
+    store("hexlore.voter", id);
   }
   return id;
 })();
 
-voteName.value = localStorage.getItem("hexlore.name") || "";
+voteName.value = stored("hexlore.name") || "";
 voteName.addEventListener("change", () => {
-  localStorage.setItem("hexlore.name", voteName.value.trim());
+  store("hexlore.name", voteName.value.trim());
   // Re-cast so the new name reaches the GM without waiting for a vote change.
   if (votes.your_hex) {
     const cell = parseHexId(votes.your_hex);
@@ -1499,8 +1700,8 @@ function renderVoteList() {
     li.addEventListener("click", () => {
       if (!cell) return;
       const p = axialToPixel(cell.q, cell.r);
-      view.ox = canvas.width / 2 - p.x * view.scale;
-      view.oy = canvas.height / 2 - p.y * view.scale;
+      view.ox = viewW / 2 - p.x * view.scale;
+      view.oy = viewH / 2 - p.y * view.scale;
       render();
     });
     return li;
