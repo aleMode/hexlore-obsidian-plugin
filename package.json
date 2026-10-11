@@ -11,7 +11,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"lint": "eslint .",
-		"vendor": "scripts/vendor-from-flutter.sh",
+		"vendor": "node scripts/vendor-from-flutter.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
