@@ -232,6 +232,39 @@ export class Vault extends Events {
 		this.put(f.path, next, true);
 		return next;
 	}
+	/** Vault.rename: moves [f] (with everything under it, for a folder) and
+	 *  fires `rename` for it, then for each descendant, as Obsidian does. */
+	rename(f: TAbstractFile, to: string): Promise<void> {
+		const from = f.path;
+		const dest = normalizePath(to);
+		const moved = [...this.files.values()].filter((x) => x === f || x.path.startsWith(`${from}/`));
+		if (f.parent) f.parent.children = f.parent.children.filter((c) => c !== f);
+		const events: [TAbstractFile, string][] = [];
+		for (const x of moved) {
+			const old = x.path;
+			const next = dest + old.slice(from.length);
+			this.files.delete(old);
+			const t = this.text.get(old);
+			this.text.delete(old);
+			x.path = next;
+			this.files.set(next, x);
+			if (t !== undefined) this.text.set(next, t);
+			events.push([x, old]);
+		}
+		const parent = this.folder(dest.includes('/') ? dest.slice(0, dest.lastIndexOf('/')) : '/');
+		f.parent = parent;
+		parent.children.push(f);
+		for (const [x, old] of events) this.trigger('rename', x, old);
+		return Promise.resolve();
+	}
+	/** Permanent delete (Vault.delete); counted, so a test can tell it from
+	 *  FileManager.trashFile. */
+	deletes = 0;
+	delete(f: TAbstractFile, _force?: boolean): Promise<void> {
+		this.deletes++;
+		this.drop(f.path);
+		return Promise.resolve();
+	}
 	create(p: string, t: string): Promise<TFile> {
 		const path = normalizePath(p);
 		if (this.files.has(path)) return Promise.reject(new Error('File already exists.'));

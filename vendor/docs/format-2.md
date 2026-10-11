@@ -159,7 +159,7 @@ Hex record:
 | `color_override` | `"#RRGGBB"` | omitted when empty | legacy fill (pre biome/feature split) |
 | `page_file` | string | omitted when empty | `pages/`-relative path of the hex page |
 | `npc_ids`, `quest_ids`, `event_ids` | string[] | omitted when empty | |
-| `tags` | string[] | omitted when empty | served to players |
+| `tags` | string[] | omitted when empty | GM-only: never served to players |
 
 Legacy terrains `city` / `dungeon` / `ruins` / `tower` (pre-split files) are
 migrated on read to a feature plus `color_override`, not preserved as

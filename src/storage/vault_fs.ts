@@ -9,11 +9,22 @@ export class VaultMapFs implements MapFs {
 		private readonly vault: Vault,
 		private readonly files: FileManager,
 		/** The data folder, vault-relative. */
-		readonly dir: string,
+		private folder: string,
 	) {}
 
+	/** The data folder, vault-relative. */
+	get dir(): string {
+		return this.folder;
+	}
+
+	/** The data folder was renamed or moved (the store registry follows the
+	 *  vault's rename): every later read and write goes to [dir]. */
+	moveTo(dir: string): void {
+		this.folder = dir;
+	}
+
 	private path(rel: string): string {
-		return normalizePath(`${this.dir}/${rel}`);
+		return normalizePath(`${this.folder}/${rel}`);
 	}
 
 	async read(rel: string): Promise<string | null> {
@@ -50,7 +61,9 @@ export class VaultMapFs implements MapFs {
 	async remove(rel: string): Promise<void> {
 		const path = this.path(rel);
 		const f = this.vault.getAbstractFileByPath(path);
-		// An emptied chunk follows the user's deletion setting, like any file.
+		// An emptied chunk follows the user's deletion setting, like any file
+		// (Obsidian's guideline; "Permanently delete" in Files and links avoids
+		// the trash filling up with chunk JSON).
 		if (f instanceof TFile) await this.files.trashFile(f);
 		else if (await this.vault.adapter.exists(path)) await this.vault.adapter.remove(path);
 	}

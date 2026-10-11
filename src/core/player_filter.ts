@@ -71,7 +71,8 @@ export function filterCampaignForPlayer(m: MapModel): JsonObject {
 			feature: shown ? h.feature : null,
 			feature_variant: shown ? h.featureVariant : 0,
 			color: h.fillColor(),
-			tags: [...h.tags],
+			// No tags: the player map draws none, and a GM's tag gives a
+			// hidden feature away like its name.
 		});
 	}
 

@@ -1,7 +1,8 @@
-import { MarkdownView, Notice, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile, TFolder, type TAbstractFile, type WorkspaceLeaf } from 'obsidian';
 import { exportToFlutter } from './convert/export_command';
 import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
+import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
@@ -122,6 +123,10 @@ export default class HexLorePlugin extends Plugin {
 			},
 		});
 
+		// Renaming the data folder, or the index, must not cut the link between
+		// them: `data:` is a plain relative path Obsidian does not update.
+		this.registerEvent(this.app.vault.on('rename', (f, old) => void this.followDataRename(f, old)));
+
 		// A `.hexmap.md` index opens as its map (the Excalidraw pattern): when
 		// a Markdown view lands on one, switch that leaf to the map view.
 		this.registerEvent(
@@ -166,6 +171,29 @@ export default class HexLorePlugin extends Plugin {
 		// Unsaved edits are written before the plugin goes (best effort:
 		// Obsidian does not wait for this).
 		void this.stores.flushAll();
+	}
+
+	/** Keep every index's `data:` pointing at its data folder across a
+	 *  rename of either (`storage/data_link.ts`). */
+	private async followDataRename(f: TAbstractFile, old: string): Promise<void> {
+		const dataOf = (idx: TFile): string | undefined => {
+			const d: unknown = this.app.metadataCache.getFileCache(idx)?.frontmatter?.data;
+			return typeof d === 'string' && d ? d : undefined;
+		};
+		const fixes: [TFile, DataLinkFix][] = [];
+		if (f instanceof TFolder) {
+			for (const idx of this.app.vault.getMarkdownFiles()) {
+				if (isMapIndex(this.app, idx)) fixes.push([idx, afterFolderRename(idx.path, dataOf(idx), old, f.path)]);
+			}
+		} else if (f instanceof TFile && isMapIndex(this.app, f)) {
+			const isFolder = (p: string) => this.app.vault.getAbstractFileByPath(p) instanceof TFolder;
+			fixes.push([f, afterIndexRename(old, f.path, dataOf(f), isFolder)]);
+		}
+		for (const [idx, fix] of fixes) {
+			if (!fix) continue;
+			if ('problem' in fix) new Notice(fix.problem, 15000);
+			else await this.app.fileManager.processFrontMatter(idx, (fm: Record<string, unknown>) => (fm.data = fix.data));
+		}
 	}
 
 	async saveSettings(): Promise<void> {

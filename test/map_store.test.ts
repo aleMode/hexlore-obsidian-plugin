@@ -87,6 +87,29 @@ describe('the map store', () => {
 		expect(fs.files.get('rivers/rivers.json')).toBe('[ this is not json');
 	});
 
+	it('says, once per file, that an edit to a file it could not read is not saved', async () => {
+		const fs = folder();
+		fs.files.set('paint/c_0_0.json', '{"broken": ');
+		const { store, events } = await open(fs);
+		events.length = 0;
+		store.model.getOrCreateHex(1, 1).name = 'Lost';
+		store.markHex(1, 1);
+		await store.flush();
+		store.markHex(1, 1); // the next stroke: no second notice
+		await store.flush();
+		const problems = events.filter((e) => e.kind === 'problem');
+		expect(problems).toHaveLength(1);
+		expect(problems[0]!.kind === 'problem' && problems[0]!.message).toContain('paint/c_0_0.json');
+		expect(fs.files.get('paint/c_0_0.json')).toBe('{"broken": ');
+		// Repaired outside: a later edit there is saved normally.
+		fs.files.set('paint/c_0_0.json', '[]');
+		await store.externalChange(['paint/c_0_0.json']);
+		store.model.getOrCreateHex(1, 1).name = 'Saved';
+		store.markHex(1, 1);
+		await store.flush();
+		expect(fs.files.get('paint/c_0_0.json')).toContain('Saved');
+	});
+
 	it('opens a newer format, or format 1, read-only and writes nothing', async () => {
 		for (const format of [3, 1]) {
 			const fs = folder();

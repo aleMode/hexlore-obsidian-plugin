@@ -61,6 +61,8 @@ export class MapStore {
 	readOnlyReason: string | null = null;
 	/** Files that did not parse: never written. Path → why. */
 	readonly broken = new Map<string, string>();
+	/** Broken files an edit was already refused for (one notice each). */
+	private readonly warnedBroken = new Set<string>();
 
 	/** Last text known to be on disk, per path (null: no file). */
 	private readonly disk = new Map<string, string | null>();
@@ -122,6 +124,7 @@ export class MapStore {
 		try {
 			applyFile(this.model, key, text, this.fallbackName);
 			this.broken.delete(path);
+			this.warnedBroken.delete(path);
 		} catch (e) {
 			if (!(e instanceof DecodeError)) throw e;
 			this.broken.set(path, e.message);
@@ -175,7 +178,15 @@ export class MapStore {
 		const written: FileKey[] = [];
 		for (const key of keys) {
 			const path = pathOf(key);
-			if (this.broken.has(path)) continue;
+			if (this.broken.has(path)) {
+				// The edit is in the model but can never be saved: say so, once
+				// per file (a brush stroke would otherwise say it every flush).
+				if (!this.warnedBroken.has(path)) {
+					this.warnedBroken.add(path);
+					this.emit({ kind: 'problem', message: `Not saved: ${path} could not be read, so it is not written over. Edits there are lost on reload — repair the file first.` });
+				}
+				continue;
+			}
 			const text = 'layer' in key ? encodeLayer(this.model, key.layer) : encodeChunk(this.model, key.chunk);
 			const onDisk = this.disk.get(path) ?? null;
 			if (text === onDisk) continue;
@@ -211,6 +222,7 @@ export class MapStore {
 			try {
 				applyFile(this.model, key, text, this.fallbackName);
 				this.broken.delete(rel);
+				this.warnedBroken.delete(rel);
 			} catch (e) {
 				if (!(e instanceof DecodeError)) throw e;
 				this.broken.set(rel, e.message);

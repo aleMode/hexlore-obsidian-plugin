@@ -5,7 +5,7 @@ import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { MapModel } from '../src/core/map';
 import { fingerprint, planFlutterExport, type VaultNote } from '../src/convert/flutter_export';
-import { folderProblem, folderState, writeFlutterCampaign } from '../src/convert/write';
+import { folderProblem, folderState, renameRetrying, writeFlutterCampaign } from '../src/convert/write';
 import { parseHexList, parseLinks, readSections, REGIONS } from '../src/storage/hexmap_index';
 import { applyFile, fileKeyOf } from '../src/storage/map_codec';
 import { parseFrontmatter, readTree, resolver } from './helpers/vault_folder';
@@ -101,22 +101,53 @@ describe('writing the Flutter folder', () => {
 		expect(folderProblem('/home/me/purezza (HexLore)', '/home/me/vault')).toBeNull();
 		expect(folderProblem('C:\\Users\\me\\purezza', 'C:/Users/me/vault')).toBeNull();
 		expect(folderProblem('purezza', '/home/me/vault')).toMatch(/full path/);
+		// A drive root would have its pages/, npcs/, … swept.
+		expect(folderProblem('C:\\', null)).toMatch(/root of a drive/);
+		expect(folderProblem('C:', null)).toMatch(/root of a drive/);
+		expect(folderProblem('/', null)).toMatch(/root of a drive/);
 	});
 
-	it('writes, and sweeps what an earlier export left in the folders it owns', () => {
+	it('writes, and sets aside (never deletes) what an earlier export left in the folders it owns', async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hexlore-export-'));
+		const backup = `${dir} (replaced test)`;
 		try {
 			expect(folderState(fs, dir)).toBe('empty');
-			writeFlutterCampaign(fs, dir, new Map([['roundtrip.json', '{}'], ['pages/hexes/A.md', 'a'], ['pages/hexes/B.md', 'b']]));
+			const first = await writeFlutterCampaign(fs, dir, new Map([['roundtrip.json', '{}'], ['pages/hexes/A.md', 'a'], ['pages/hexes/B.md', 'b']]), backup);
+			expect(first).toEqual({ written: 3, setAside: 0, backupDir: null });
+			expect(fs.existsSync(backup)).toBe(false);
 			fs.mkdirSync(`${dir}/sync`);
 			fs.writeFileSync(`${dir}/sync/state.json`, 'mine');
 			expect(folderState(fs, dir)).toBe('export');
-			writeFlutterCampaign(fs, dir, new Map([['roundtrip.json', '{}'], ['pages/hexes/A.md', 'a2']]));
+			const second = await writeFlutterCampaign(fs, dir, new Map([['roundtrip.json', '{}'], ['pages/hexes/A.md', 'a2']]), backup);
+			expect(second).toEqual({ written: 2, setAside: 1, backupDir: backup });
 			expect(fs.readFileSync(`${dir}/pages/hexes/A.md`, 'utf8')).toBe('a2');
 			expect(fs.existsSync(`${dir}/pages/hexes/B.md`)).toBe(false);
+			// B was perhaps edited in HexLore since: moved aside, not lost.
+			expect(fs.readFileSync(`${backup}/pages/hexes/B.md`, 'utf8')).toBe('b');
 			expect(fs.readFileSync(`${dir}/sync/state.json`, 'utf8')).toBe('mine');
 			fs.rmSync(`${dir}/roundtrip.json`);
 			expect(folderState(fs, dir)).toBe('other');
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+			fs.rmSync(backup, { recursive: true, force: true });
+		}
+	});
+
+	it('rides out a briefly locked rename, and gives up on a lasting one', async () => {
+		let refusals = 2;
+		const flaky: typeof fs = {
+			...fs,
+			renameSync: (a: fs.PathLike, b: fs.PathLike) => {
+				if (refusals-- > 0) throw Object.assign(new Error('locked'), { code: 'EPERM' });
+				fs.renameSync(a, b);
+			},
+		};
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hexlore-export-'));
+		try {
+			await writeFlutterCampaign(flaky, dir, new Map([['campaign.json', '{}']]));
+			expect(fs.readFileSync(`${dir}/campaign.json`, 'utf8')).toBe('{}');
+			refusals = 99;
+			await expect(renameRetrying(flaky, `${dir}/campaign.json`, `${dir}/x.json`)).rejects.toThrow('locked');
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}

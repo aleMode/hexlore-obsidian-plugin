@@ -397,6 +397,12 @@ export class MapView extends ItemView {
 		this.wireInput();
 		this.registerEvent(
 			this.app.vault.on('rename', (f, old) => {
+				// The data folder moved (the registry already moved the store):
+				// follow it, so the index's updated `data:` is not a new map.
+				if (this.storeDir) {
+					const now = this.registry.currentDir(this.storeDir);
+					if (now !== this.storeDir) this.storeDir = this.dataDir = now;
+				}
 				if (old === this.state.file) {
 					this.state = { file: f.path };
 					this.file = f instanceof TFile ? f : null;

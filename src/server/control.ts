@@ -8,6 +8,7 @@ import { Notice, TFile, type App } from 'obsidian';
 import { nodeModule } from '../desktop';
 import { FORMAT_VERSION } from '../core/campaign_meta';
 import { encodeCompact } from '../core/json';
+import { pickLanAddress } from '../core/lan_address';
 import { filterCampaignForPlayer } from '../core/player_filter';
 import { editorFor } from '../edit/editors';
 import type { MapStore } from '../storage/map_store';
@@ -177,11 +178,14 @@ export class PlayerControl {
 	}
 }
 
-/** Best-effort LAN address: the first non-internal IPv4 one. */
+/** Best-effort LAN address: the IPv4 one players on the same network can
+ *  most likely reach (a physical adapter's private address over a VPN or a
+ *  virtual switch; `core/lan_address.ts`). */
 async function lanAddress(): Promise<string> {
 	const os = await nodeModule('os');
-	for (const list of Object.values(os?.networkInterfaces() ?? {})) {
-		for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
+	const candidates: [string, string][] = [];
+	for (const [name, list] of Object.entries(os?.networkInterfaces() ?? {})) {
+		for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) candidates.push([name, a.address]);
 	}
-	return '127.0.0.1';
+	return pickLanAddress(candidates) ?? '127.0.0.1';
 }

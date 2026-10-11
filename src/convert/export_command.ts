@@ -79,8 +79,9 @@ export async function exportToFlutter(app: App, stores: StoreRegistry, index: TF
 				notes,
 				resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(linkPath(link), from)?.path ?? null,
 			});
-			const n = writeFlutterCampaign(fs, dir, plan.files);
-			new Notice(`Exported “${name}”: ${n} files in ${dir}. Open that folder in the desktop app.`, 10000);
+			const r = await writeFlutterCampaign(fs, dir, plan.files);
+			new Notice(`Exported “${name}”: ${r.written} files in ${dir}. Open that folder in the desktop app.`, 10000);
+			if (r.backupDir) new Notice(`${r.setAside} file${r.setAside === 1 ? '' : 's'} the export no longer has were moved to ${r.backupDir}, not deleted.`, 15000);
 			for (const r of plan.reports) new Notice(r, 10000);
 		} finally {
 			await stores.release(dataDir);
@@ -119,7 +120,7 @@ class ExportModal extends Modal {
 					? 'A new folder.'
 					: state === 'export'
 						? 'An earlier export: it is updated (changes made to it in HexLore since are replaced — export them to the vault first).'
-						: 'This folder holds other files: a HexLore campaign there is REPLACED. Turn on the switch below to go ahead.',
+						: 'This folder holds other files: a HexLore campaign there is REPLACED (files the export does not write are moved to a "(replaced …)" folder beside it). Turn on the switch below to go ahead.',
 			);
 			return state !== 'other' || confirm;
 		};
