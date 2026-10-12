@@ -112,7 +112,15 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   Everything else in the file is left byte for byte.
 - **Per-device state** (camera, style, blend, panel state) is in
   `app.saveLocalStorage`, never in synced files. **Vault settings** are in the
-  plugin's `data.json` (the templates folder, the LAN switch).
+  plugin's `data.json` (the templates folder, the LAN switch, "A folder
+  for each new map").
+- **A new map** (`createMap`, `view/map_menus.ts`) goes in a folder of its
+  own: `<Name>/<Name>.hexmap.md`, `<Name>/<Name>.hexlore/` and the numbered
+  section folders of `MAP_FOLDER_SECTIONS` (`storage/hexmap_index.ts`),
+  written into the index as its `sections`. The section NAMES stay the
+  converter's; only the folders are numbered. With the setting off, the
+  index and data folder go straight into the chosen folder and the index
+  has no `sections` (the defaults at the vault root apply).
 - **Read-only cases:** a newer format, a format-1 folder (the Flutter app
   migrates those), or a file that cannot be parsed (never written back).
 

@@ -324,8 +324,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   classifier, and the multi-isolate fan-out (chunks yield to the UI instead).
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13): only what has no better home
-  (the templates folder); `playerLan` is stored here, switched from the
-  players menu.
+  (the templates folder, `mapFolders`: a new map gets a folder of its own
+  with numbered section folders, `MAP_FOLDER_SECTIONS`, names kept as the
+  converter's); `playerLan` is stored here, switched from the players menu.
 - `src/dev/` — the synthetic 100×100 map and the renderer benchmark (map
   menu → HexLore → "Benchmark the renderer"); keep it to compare renderer changes.
 

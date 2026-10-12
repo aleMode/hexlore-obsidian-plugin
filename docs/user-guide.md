@@ -20,13 +20,30 @@ The **BRAT** plugin can install and update it from its repository instead.
 ## Your first map
 
 Run the command **HexLore: Create a new map…** (Ctrl+P), and give it a name,
-a folder and a size. This creates two things:
+a folder and a size. The map gets a folder of its own:
 
-- `Name.hexmap.md`, the map's **index note**. Opening it opens the map.
+```
+Name/
+  Name.hexmap.md
+  Name.hexlore/
+  10 Places/   20 Regions/   30 NPCs/     40 Factions/
+  50 Quests/   60 Adventures/  70 GM notes/  90 Miscellanea/
+```
+
+- `Name.hexmap.md` is the map's **index note**. Opening it opens the map.
   It holds only links, so Obsidian keeps them current when notes are renamed
   or moved.
-- `Name.hexlore/`, a folder with the map data (JSON files). Leave it next to
-  the index. Renaming or moving either one keeps them connected.
+- `Name.hexlore/` is a folder with the map data (JSON files). Leave it next
+  to the index. Renaming or moving either one keeps them connected.
+- The numbered folders are the map's **sections** (below): notes you create
+  from the map land there, so two maps in one vault never mix their notes.
+  The numbers only keep them in this order; rename or move them as you like
+  in the Sections list.
+
+To make maps the old way (the index and its data folder straight into the
+folder you choose, sharing the default sections at the vault root), turn off
+**A folder for each new map** in the plugin's settings. Maps that already
+exist are never changed.
 
 Everything is saved as you work. To read the index as plain text, use the
 tab's **Open as Markdown** menu entry. **Open this note as a map** goes back.
@@ -98,8 +115,11 @@ for every hex whose notes include that place.
 
 ### Sections
 
-A section is a named folder of notes for this campaign: Places, Regions,
-NPCs, GM notes, Adventures, Unsorted by default, plus your own. Sections are
+A section is a named folder of notes for this campaign. A new map gets
+Places, Regions, NPCs, Factions, Quests, Adventures, GM notes and Unsorted
+(its folder is "Miscellanea"), each in the map's own folder; a map with no
+sections of its own uses Places, Regions, NPCs, GM notes, Adventures and
+Unsorted at the vault root. Add your own as you like. Sections are
 for browsing and for where new notes land; they never change what a hex
 links to. Hover a note in the Sections list to light up its hexes. A
 section can name a **template** note.

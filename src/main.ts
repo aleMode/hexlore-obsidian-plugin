@@ -5,7 +5,7 @@ import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './setting
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
-import { NewMapModal } from './view/map_menus';
+import { NewMapModal, newMapFolder } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
 
@@ -38,6 +38,7 @@ export default class HexLorePlugin extends Plugin {
 					void this.players.lanChanged();
 				},
 				templatesFolder: () => this.settings.templatesFolder,
+				mapFolders: () => this.settings.mapFolders,
 			}));
 		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
@@ -49,9 +50,9 @@ export default class HexLorePlugin extends Plugin {
 			id: 'new-map',
 			name: 'Create a new map…',
 			callback: () => {
-				const parent = this.app.workspace.getActiveFile()?.parent;
-				const folder = parent && !parent.isRoot() ? parent.path : '';
-				new NewMapModal(this.app, folder, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
+				const own = this.settings.mapFolders;
+				const folder = newMapFolder(this.app.workspace.getActiveFile(), own);
+				new NewMapModal(this.app, folder, own, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
 			},
 		});
 		this.addCommand({

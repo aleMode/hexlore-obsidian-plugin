@@ -206,6 +206,25 @@ export const DEFAULT_SECTIONS: readonly Section[] = [
 	{ name: 'Unsorted', folder: 'Unsorted' },
 ];
 
+/** The sections of a map made in a folder of its own: numbered folders, so
+ *  they sort in this order. The names are the converter's (Factions is a
+ *  custom section, a custom tab in Flutter); Unsorted's folder is
+ *  "Miscellanea". */
+export const MAP_FOLDER_SECTIONS: readonly Section[] = [
+	{ name: 'Places', folder: '10 Places' },
+	{ name: 'Regions', folder: '20 Regions' },
+	{ name: 'NPCs', folder: '30 NPCs' },
+	{ name: 'Factions', folder: '40 Factions' },
+	{ name: 'Quests', folder: '50 Quests' },
+	{ name: 'Adventures', folder: '60 Adventures' },
+	{ name: 'GM notes', folder: '70 GM notes' },
+	{ name: 'Unsorted', folder: '90 Miscellanea' },
+];
+
+/** [MAP_FOLDER_SECTIONS] inside [home], the map's folder ('' = vault root). */
+export const mapFolderSections = (home: string): Section[] =>
+	MAP_FOLDER_SECTIONS.map((s) => ({ name: s.name, folder: home ? `${home}/${s.folder}` : s.folder }));
+
 const cleanFolder = (f: string) => f.trim().replace(/^\/+|\/+$/g, '');
 
 /** Tolerant read of the `sections` frontmatter key: a list of {name, folder}

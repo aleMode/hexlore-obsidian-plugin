@@ -158,6 +158,25 @@ records, copied into `vendor/docs/decisions/` (index in its `README.md`).
 - **Nested section folders are not allowed** (see Q11).
 - **Sections are set per CAMPAIGN**, stored in the `.hexmap.md` frontmatter. Two
   campaigns may still point at the same folder (e.g. a shared NPC folder).
+- **A new map gets a folder of its own** (2026-10-12): `<Name>/` holds the
+  index, the data folder and one numbered folder per section (`10 Places`,
+  `20 Regions`, `30 NPCs`, `40 Factions`, `50 Quests`, `60 Adventures`,
+  `70 GM notes`, `90 Miscellanea`), written as the map's `sections`.
+  - **Why:** the defaults are folders at the vault root, so a second map
+    mixed its notes with the first's. The Flutter app has one campaign at a
+    time; a vault holds many.
+  - **The names stay the converter's** (Places, NPCs, GM notes, Unsorted…;
+    the exporter recognises sections by name), only the folders change;
+    Factions is a custom section (a custom tab in Flutter). No contract
+    change.
+  - **The plugin suggests a structure, it does not own it:** the setting
+    "A folder for each new map" turns it off, and sections can point
+    anywhere afterwards. Existing maps are never moved.
+  - **Rejected for now:** a shared "setting" file whose sections several
+    campaigns inherit (a converter contract change for a rare need; two
+    maps can already point at the same folders), and moving notes into
+    their section automatically (moves a file while it is being written;
+    a note outside every map folder has no single right place).
 
 ### 1.5 Import / export and the round trip
 
@@ -387,7 +406,7 @@ stand-in for Obsidian.
 |---|---|---|
 | Q1 | Where does the converter run? | **Both apps, each writing the other's format** (1.12 in Flutter, 2.7 in the plugin), governed by `docs/converter.md` (1.11). |
 | Q3 | Sections per vault or per campaign? | **Per campaign**, in the `.hexmap.md` frontmatter. |
-| Q4 | Where does the data folder sit? | `<Name>.hexmap.md` + a sibling `<Name>.hexlore/`. |
+| Q4 | Where does the data folder sit? | `<Name>.hexmap.md` + a sibling `<Name>.hexlore/`; for a new map, both inside its own `<Name>/` folder (§1.4). |
 | Q5 | Variant ids: strings everywhere or mixed? | **Strings everywhere** in format 2. |
 | Q9 | Undo when a file changes underneath | Drop the undo entries touching the reloaded files, with a notice. Keep the rest. |
 | Q6 | Exports | Both apps are used as they are: **no map embedded in notes**. The converters move WHOLE campaigns only. **An image exporter (PNG + PDF) in BOTH apps**, with the same options (§1.9): Players/GM, Clean/Illustrated, and a PDF that is the map only, split across pages. |

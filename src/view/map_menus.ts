@@ -2,37 +2,49 @@
 // decision 30): new map, open map, quick jump, map scale, unassigned
 // characters and quests, and the stylus diagnostics.
 
-import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, normalizePath, type App } from 'obsidian';
+import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, normalizePath, type App } from 'obsidian';
 import { CampaignMeta } from '../core/campaign_meta';
 import { MapScale, type DistanceUnit } from '../core/map_scale';
 import { RIVER_WIDTH_MAX, RIVER_WIDTH_MIN } from '../core/river';
 import { rankEntries, type JumpEntry } from '../core/quick_jump';
 import { encodeJsonLines } from '../core/json';
 import { safeNoteName } from '../notes/note_meta';
+import { mapFolderSections } from '../storage/hexmap_index';
 import { WheelClassifier } from './wheel_intent';
 
 // ----- new map -------------------------------------------------------------------------
 
 /** Create `<folder>/<name>.hexmap.md` and its data folder with a format-2
- *  `campaign.json`: an empty map the plugin (and the Flutter app) open. */
-export async function createMap(app: App, folder: string, name: string, cols: number, rows: number): Promise<TFile> {
+ *  `campaign.json`: an empty map the plugin (and the Flutter app) open.
+ *  With [ownFolder], all of it goes in `<folder>/<name>/`, with a numbered
+ *  folder per section (`MAP_FOLDER_SECTIONS`), written as the map's
+ *  sections. */
+export async function createMap(app: App, folder: string, name: string, cols: number, rows: number, ownFolder = false): Promise<TFile> {
 	const safe = safeNoteName(name);
-	const dir = folder && folder !== '/' ? `${normalizePath(folder)}/` : '';
+	const parent = folder && folder !== '/' ? normalizePath(folder) : '';
+	const under = (p: string) => (p ? `${p}/` : '');
+	const exists = (p: string) => !!app.vault.getAbstractFileByPath(p);
+	const taken = (b: string) => (ownFolder ? exists(`${under(parent)}${b}`) : exists(`${under(parent)}${b}.hexmap.md`) || exists(`${under(parent)}${b}.hexlore`));
 	let base = safe;
-	for (let n = 2; app.vault.getAbstractFileByPath(`${dir}${base}.hexmap.md`) || app.vault.getAbstractFileByPath(`${dir}${base}.hexlore`); n++) base = `${safe} ${n}`;
+	for (let n = 2; taken(base); n++) base = `${safe} ${n}`;
+	const home = ownFolder ? `${under(parent)}${base}` : parent;
+	const dir = under(home);
 	const meta = new CampaignMeta();
 	meta.name = name.trim() || base;
 	meta.gridCols = Math.max(1, Math.round(cols));
 	meta.gridRows = Math.max(1, Math.round(rows));
-	if (dir && !app.vault.getAbstractFileByPath(dir.slice(0, -1))) await app.vault.createFolder(dir.slice(0, -1)).catch(() => undefined);
+	if (home && !exists(home)) await app.vault.createFolder(home).catch(() => undefined);
 	await app.vault.createFolder(`${dir}${base}.hexlore`).catch(() => undefined);
 	await app.vault.create(`${dir}${base}.hexlore/campaign.json`, encodeJsonLines(meta.toJson()));
+	const sections = ownFolder ? mapFolderSections(home) : [];
+	for (const s of sections) if (!exists(s.folder)) await app.vault.createFolder(s.folder).catch(() => undefined);
 	const index = [
 		'---',
 		'hexlore-plugin: map',
 		'hexlore-index: 1',
 		`format: ${meta.format}`,
 		`data: ${JSON.stringify(`${base}.hexlore`)}`,
+		...(sections.length ? ['sections:', ...sections.map((s) => `  - {"name": ${JSON.stringify(s.name)}, "folder": ${JSON.stringify(s.folder)}}`)] : []),
 		'---',
 		'',
 		`# ${meta.name}`,
@@ -43,10 +55,25 @@ export async function createMap(app: App, folder: string, name: string, cols: nu
 	return app.vault.create(`${dir}${base}.hexmap.md`, index);
 }
 
+/** Where "New map" proposes to put a map made while [file] is open: its
+ *  folder; with [ownFolder], beside the map folder [file] is in, if any (a
+ *  folder holding `<its name>.hexmap.md`), never inside it. '' = the root. */
+export function newMapFolder(file: TFile | null, ownFolder: boolean): string {
+	let at: TFolder | null = file?.parent ?? null;
+	if (ownFolder) {
+		for (let f = at; f && !f.isRoot(); f = f.parent) {
+			if (f.children.some((c) => c instanceof TFile && c.name === `${f.name}.hexmap.md`)) at = f.parent;
+		}
+	}
+	return at && !at.isRoot() ? at.path : '';
+}
+
 export class NewMapModal extends Modal {
 	constructor(
 		app: App,
 		private readonly folder: string,
+		/** Give the map a folder of its own, with its section folders. */
+		private readonly ownFolder: boolean,
 		private readonly done: (file: TFile) => void,
 	) {
 		super(app);
@@ -63,7 +90,11 @@ export class NewMapModal extends Modal {
 		});
 		new Setting(this.contentEl)
 			.setName('Folder')
-			.setDesc('Where the map note and its data folder go (empty: the vault root).')
+			.setDesc(
+				this.ownFolder
+					? 'The map gets a folder of its own in here, with a folder for each section (empty: the vault root). Turn this off in the HexLore settings.'
+					: 'Where the map note and its data folder go (empty: the vault root).',
+			)
 			.addText((t) => t.setValue(folder).onChange((v) => (folder = v.trim())));
 		new Setting(this.contentEl)
 			.setName('Grid')
@@ -80,7 +111,7 @@ export class NewMapModal extends Modal {
 						return;
 					}
 					try {
-						const file = await createMap(this.app, folder, name, cols, rows);
+						const file = await createMap(this.app, folder, name, cols, rows, this.ownFolder);
 						this.close();
 						this.done(file);
 					} catch (e) {
