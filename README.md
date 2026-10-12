@@ -26,6 +26,8 @@ new map…**.
 | [Technical manual](docs/technical-manual.md) | how it is built |
 | [Design record](docs/design.md) | the design decisions, the build record, what is left |
 | [Performance](docs/performance.md) | the renderer benchmark and its results |
+| [Workflow](vendor/WORKFLOW.md) | how every change is made (copied from the HexLore app's repository) |
+| [Changelog](CHANGELOG.md) | what changed, version by version |
 | [CLAUDE.md](CLAUDE.md) | the rules for changing the code |
 | `vendor/docs/` | the map format, the converter contract and the decision records, copied from the HexLore app |
 
@@ -34,8 +36,8 @@ new map…**.
 ```sh
 eval "$(fnm env)"          # Node via fnm
 npm install
+npm run check              # lint + test + build: what every change must pass
 npm test                   # Vitest, including the conformance fixtures
-npm run lint
 npm run dev                # rebuild main.js on change, copied into the dev vault
 npm run build              # type-check + production bundle
 npm run vendor             # re-copy the contract from the HexLore app's repository

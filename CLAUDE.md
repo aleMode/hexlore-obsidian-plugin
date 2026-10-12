@@ -14,8 +14,34 @@ anything private out of it.
 - `docs/technical-manual.md` (how it is built), `docs/user-guide.md`,
   `docs/performance.md` (the renderer benchmark; compare against it).
 
-Node comes from fnm: run `eval "$(fnm env)"` in a fresh shell.
-`npm test` (Vitest) · `npm run lint` · `npm run build` · `npm run dev` (watch).
+Node comes from fnm (`.node-version` pins 24): run `eval "$(fnm env)"` in a
+fresh shell. `npm run check` (lint + test + build, everything a change must
+pass) · `npm test` (Vitest) · `npm run dev` (watch). User-visible changes go
+in `CHANGELOG.md`.
+
+## How every change is made (read first)
+
+Every change follows the workflow in `vendor/WORKFLOW.md` (copied from the
+Flutter repository, which owns it; loaded below). What that means for a
+session:
+
+- **Before the first edit, run `/start-change`** (or its steps): classify
+  the change as A (this app only), B (both apps, or the shared contract) or
+  C (bug / optimization), and work on a branch off an up-to-date `main`.
+  **Never edit on `main`.**
+- **Kind B starts in `../software_hexlore`, not here.** It is made, committed
+  and pushed there first; then `npm run vendor` here, and the failing tests
+  are the to-do list. Never edit `vendor/` by hand.
+- **A bug fix starts with a failing test; an optimization starts with the
+  renderer benchmark** (`docs/performance.md`).
+- **Before calling a change done, run `/finish-change`:** `npm run check`
+  green, docs and `CHANGELOG.md` updated in the same change, the Flutter app
+  checked for the same change or bug, a commit message proposed.
+- Never commit, merge, push or tag unless the user asks.
+- If the user asks to skip a step, name the step and what it protects in one
+  line, then do as they decide.
+
+@vendor/WORKFLOW.md
 
 ## The contract comes from Flutter
 
@@ -24,8 +50,9 @@ fixture pairs, `docs/format-2.md`, `docs/converter.md`, decision records
 (`docs/decisions/`, plus the importer's as `importer.md`), the player assets
 (render spec, texture and glyph tables) and `variant_ids.lock`.
 `vendor/SOURCE` names the Flutter commit. `npm run vendor` finds the Flutter
-repository through `$HEXLORE_FLUTTER` (else `..` while the plugin sits inside
-it, else `../software_hexlore`).
+repository through `$HEXLORE_FLUTTER`, else `../software_hexlore`. Vendor
+only from a pushed Flutter commit (CI fails on a "(dirty)" `vendor/SOURCE`),
+and name it in the commit that ports the change.
 
 - Never edit `vendor/` by hand. Change Flutter, regenerate its fixtures
   (`HEXLORE_WRITE_CONFORMANCE=1 flutter test test/conformance_test.dart`),
@@ -333,9 +360,8 @@ never in synced files (§1.2).
 ## Dev vault
 
 The dev vault holds a real campaign (`purezza`, exported from Flutter), so it
-is NEVER part of this repository: it lives in a private place of its own
-(`../obsidian-test-vault/` by default: inside the Flutter repository while
-the plugin sits there, its own private repository after the split), and
+is NEVER part of this repository: it is the private repository
+`aleMode/obsidian-test-vault`, checked out at `../obsidian-test-vault/`, and
 `test-vault` here is a git-ignored symlink to it (`test/renderer.test.ts`
 renders its campaign when present). Every build (`npm run dev` / `npm run
 build`) COPIES `main.js`, `manifest.json` and `styles.css` into that vault's

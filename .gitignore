@@ -14,10 +14,14 @@ main.js
 # Obsidian per-install plugin data
 data.json
 
-# The dev vault holds a real campaign: never committed here. While the
-# plugin lives inside the Flutter repository this is a symlink to
-# ../obsidian-test-vault (no trailing slash, so the link is ignored too).
+# The dev vault holds a real campaign: never committed here. This is a
+# symlink to ../obsidian-test-vault (no trailing slash, so the link is
+# ignored too).
 test-vault
+
+# Claude Code: per-machine settings and the worktrees it creates
+.claude/settings.local.json
+.claude/worktrees/
 
 # Obsidian's state, if the repository root is ever opened as a vault.
 .obsidian/

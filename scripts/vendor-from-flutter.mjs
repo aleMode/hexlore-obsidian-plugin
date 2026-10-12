@@ -6,8 +6,7 @@
 // from. Never edit vendor/ by hand: change Flutter, then re-run this.
 //
 // Usage: npm run vendor [-- path-to-flutter-repo]
-//        (default: $HEXLORE_FLUTTER, else the repository this folder sits in
-//        while the plugin lives in obsidian-plugin/, else ../software_hexlore)
+//        (default: $HEXLORE_FLUTTER, else ../software_hexlore)
 //
 // Node, not sh: `npm run` uses cmd.exe on Windows, which cannot run a shell
 // script, and Windows has no `sh` on its PATH by default.
@@ -17,8 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const fallback = existsSync(join(here, '..', 'hexlore_flutter')) ? join(here, '..') : join(here, '..', 'software_hexlore');
-const src = resolve(process.argv[2] ?? process.env.HEXLORE_FLUTTER ?? fallback);
+const src = resolve(process.argv[2] ?? process.env.HEXLORE_FLUTTER ?? join(here, '..', 'software_hexlore'));
 const app = join(src, 'hexlore_flutter');
 
 if (!existsSync(join(app, 'pubspec.yaml'))) {
@@ -37,6 +35,7 @@ const paths = [
 	'hexlore_flutter/test/fixtures/converter',
 	'hexlore_flutter/assets/player',
 	'hexlore_flutter/tool/variant_ids.lock',
+	'WORKFLOW.md',
 ];
 
 // Vendoring uncommitted files would record a commit they are not in.
@@ -64,6 +63,8 @@ cpSync(join(app, 'lib/importer/CLAUDE.md'), join(out, 'docs/decisions/importer.m
 cpSync(join(app, 'test/fixtures/converter'), join(out, 'converter'), { recursive: true });
 for (const f of readdirSync(join(app, 'assets/player'))) cpSync(join(app, 'assets/player', f), join(out, 'player', f));
 cpSync(join(app, 'tool/variant_ids.lock'), join(out, 'variant_ids.lock'));
+// How changes are made in both repositories (this repository's CLAUDE.md loads it).
+cpSync(join(src, 'WORKFLOW.md'), join(out, 'WORKFLOW.md'));
 
 const head = git('rev-parse', 'HEAD');
 writeFileSync(join(out, 'SOURCE'), `${head}${dirty}\n${git('log', '-1', '--format=%cI %s')}\n`);

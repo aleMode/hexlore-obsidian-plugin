@@ -57,8 +57,8 @@ a dev vault's `.obsidian/plugins/hexlore/` (plus a `.hotreload` marker for
 the Hot Reload plugin). The vault is `$HEXLORE_VAULT`, else
 `../obsidian-test-vault`; `HEXLORE_VAULT=none` skips the copy (CI does).
 
-The Flutter repository is found by `$HEXLORE_FLUTTER`, else the folder above
-this one when the plugin sits inside it, else `../software_hexlore`.
+The Flutter repository is found by `$HEXLORE_FLUTTER`, else
+`../software_hexlore`.
 
 ## 4. Architecture
 

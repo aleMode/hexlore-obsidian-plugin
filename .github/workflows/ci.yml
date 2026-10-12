@@ -1,8 +1,5 @@
 name: CI
 
-# Takes over from the Flutter repository's obsidian-plugin.yml once the
-# plugin is a repository of its own (GitHub ignores workflows in subfolders,
-# so this file does nothing before then).
 on:
   push:
     branches: [main]
@@ -27,8 +24,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
+      # The contract must come from a COMMITTED Flutter state (WORKFLOW.md).
+      - name: vendor/SOURCE names a committed Flutter commit
+        shell: bash
+        run: |
+          if grep -q "(dirty)" vendor/SOURCE; then
+            echo "::error::vendor/ was copied from uncommitted Flutter changes. Commit and push software_hexlore, then run npm run vendor again."
+            exit 1
+          fi
       - run: npm ci
       - run: npm run lint
       - run: npm test
