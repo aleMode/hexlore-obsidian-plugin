@@ -1,4 +1,4 @@
-// "Export to HexLore (Flutter)…" (plan item 2.7): the plugin's half of the
+// "Export as a campaign folder…" (plan item 2.7): the plugin's half of the
 // converter, following docs/converter.md §5 (vendored: vendor/docs/). Pure:
 // the caller hands in the map model, the index's links, the sections and
 // the notes (text + frontmatter), and a link resolver; it gets back the

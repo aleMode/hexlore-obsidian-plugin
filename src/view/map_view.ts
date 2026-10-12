@@ -260,7 +260,7 @@ export class MapView extends ItemView {
 			toggle: () => Promise<void>;
 			/** Live player votes on this map: hex id → count. */
 			votes: (file: TFile | null) => Map<string, number>;
-			/** "Export to the HexLore app…" (item 2.7). */
+			/** "Export as a campaign folder…" (item 2.7). */
 			exportFlutter: (file: TFile) => void;
 			/** The plugin's folder (the importer's libraries live there). */
 			pluginDir: string;
@@ -328,7 +328,7 @@ export class MapView extends ItemView {
 			routeColor?: string;
 			threadColor?: string;
 		};
-		this.tool = TOOLS.some((t) => t.id === prefs.tool && !t.later) ? prefs.tool! : 'select';
+		this.tool = TOOLS.some((t) => t.id === prefs.tool) ? prefs.tool! : 'select';
 		this.brush = Math.min(MAX_BRUSH, Math.max(0, prefs.brush ?? 0));
 		this.pick = pickFromStored(prefs.pick);
 		this.routeKind = ROUTE_KINDS.some((r) => r.kind === prefs.routeKind) ? prefs.routeKind! : 'road';

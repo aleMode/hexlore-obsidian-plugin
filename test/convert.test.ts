@@ -13,9 +13,11 @@ import { parseFrontmatter, readTree, resolver } from './helpers/vault_folder';
 // The plugin → Flutter direction (plan item 2.7, docs/converter.md §5). Its
 // input is the Flutter → plugin fixture's OUTPUT, so the pair is a round
 // trip: HexLore → vault → HexLore. HEXLORE_WRITE_CONVERTER=1 writes the
-// expected folder into the Flutter repository (then `npm run vendor`).
+// expected folder into the Flutter repository ($HEXLORE_FLUTTER, else the
+// folder above this one), then `npm run vendor`.
 const VENDOR = 'vendor/converter';
-const FLUTTER_PAIR = '../hexlore_flutter/test/fixtures/converter/plugin_to_flutter/expected';
+const FLUTTER_REPO = process.env.HEXLORE_FLUTTER ?? '..';
+const FLUTTER_PAIR = `${FLUTTER_REPO}/hexlore_flutter/test/fixtures/converter/plugin_to_flutter/expected`;
 
 function exportVault(dir: string) {
 	const tree = readTree(dir);

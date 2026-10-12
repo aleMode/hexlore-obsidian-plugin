@@ -1,5 +1,5 @@
-// Port of Flutter's lib/core/hex_data.dart — the tables only, so far.
-// The HexData model itself lands with item 2.1.
+// Port of Flutter's lib/core/hex_data.dart: the terrain and feature tables.
+// The hex model itself is in hex.ts.
 
 /** Biomes, in the Dart enum's order. Values are the strings persisted on disk. */
 export const TERRAINS = [

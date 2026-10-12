@@ -1,4 +1,4 @@
-// Port of Flutter's lib/core/export_layout.dart (plan items 1.14 / 2.10):
+// Port of Flutter's lib/core/export_layout.dart (decision 32, item 2.10):
 // the image exporter's arithmetic — how big a PNG is and how it is cut into
 // render tiles, and how a print is cut into overlapping pages. A hex is
 // measured CORNER TO CORNER (flat-top: 2 · HEX_RADIUS scene px).

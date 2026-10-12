@@ -1,6 +1,5 @@
 // Port of Flutter's lib/core/geometry.dart: flat-top hexes, radius R (centre
-// to corner). The river/route anchor GRAPH (anchorNeighbors, nearestAnchor)
-// waits for the editor (item 2.4), with the canonicalisation it needs.
+// to corner). The river/route anchor graph is in anchors.ts.
 
 export const HEX_RADIUS = 48;
 

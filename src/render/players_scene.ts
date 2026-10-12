@@ -1,5 +1,5 @@
 // The PLAYERS' map as render data, rebuilt from the player filter's payload
-// (Flutter's lib/convert/players_map.dart, plan items 1.14 / 2.10). The
+// (Flutter's lib/convert/players_map.dart, decision 32, item 2.10). The
 // image exporter's Players version is drawn from THIS, never from the GM
 // model: what the filter did not serve cannot be drawn. No region, thread,
 // border, note or badge exists here to leak.

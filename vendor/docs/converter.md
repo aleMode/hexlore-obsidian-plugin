@@ -1,13 +1,16 @@
 # The HexLore converters
 
-How a WHOLE campaign moves between the Flutter app and the Obsidian plugin
-(plan §1.5, items 1.11–1.13 and 2.7). There are two converters, one in each
-app, each writing the OTHER app's format:
+How a WHOLE campaign moves between the Flutter app and the Obsidian plugin.
+There are two converters, one in each app, each writing the OTHER app's
+format:
 
 | Direction | Where | Code |
 |---|---|---|
 | Flutter → plugin | Flutter, "Export to Obsidian vault…" | `hexlore_flutter/lib/convert/vault_export.dart` (map), `notes_export.dart` (notes) |
-| plugin → Flutter | plugin, "Export to HexLore (Flutter)…" | `obsidian-plugin/src/convert/` |
+| plugin → Flutter | plugin, "Export as a campaign folder…" | the plugin's `src/convert/` |
+
+This file lives in the Flutter repository; the plugin keeps a copy in
+`vendor/docs/converter.md` (`npm run vendor`).
 
 Each app reads only its own format. **The map files are shared as they are**
 (`docs/format-2.md`); a converter moves the notes world around them.
@@ -47,14 +50,23 @@ knows warns before running and never deletes anything.
 
 The vault side, as the plugin reads it:
 
-- **The index** `<Name>.hexmap.md` (grammar v1, `obsidian-plugin/CLAUDE.md`):
-  frontmatter `hexlore-plugin: map`, `hexlore-index: 1`,
-  `hexlore-converter: 1`, `format`, `data`, `underlay`, `trace-image`,
-  `sections`; body `## Regions` and `## Hexes` link lists. A hex's first note
-  is its PRINCIPAL note.
+- **The index** `<Name>.hexmap.md` (grammar v1): frontmatter
+  `hexlore-plugin: map`, `hexlore-index: 1`, `hexlore-converter: 1`,
+  `format`, `data` (the sibling data folder, relative to the index),
+  `underlay`, `trace-image`, `sections`. The body has two sections that
+  belong to the plugin, with one line grammar:
+  - `## Hexes`: `- q5_r-2 :: [[Main note]] · [[Other note]]`. A hex's first
+    note is its PRINCIPAL note.
+  - `## Regions`: `- region_001 :: [[Region note]]`, the note encounters are
+    rolled from.
+
+  Links are plain Markdown lines, never in a code block (Obsidian does not
+  track links there). Everything else in the file is left byte for byte, and
+  a section line that does not parse is kept verbatim and reported, never
+  dropped.
 - **Sections**: `sections: [{name, folder, template?}]`, folders as VAULT
   paths. No nesting.
-- **Note kinds** (`obsidian-plugin/src/notes/note_meta.ts`): `type: npc`,
+- **Note kinds** (the plugin's `src/notes/note_meta.ts`): `type: npc`,
   `type: quest`, `type: place`; others are plain. NPCs and quests point at
   PLACE NOTES through `location` (one link or a list), never at coordinates.
 - **Round-trip keys** in a note's frontmatter (left alone by the plugin):
@@ -186,7 +198,7 @@ folder, and every NPC or quest note those link through `location`.
   title or entry's name that note became. A link to a note that became no
   named thing keeps its note name.
 
-### 5.3 Flutter side (1.13)
+### 5.3 Flutter side
 
 - The hex panel shows `also_links` as a read-only "Also links to" list; each
   entry opens in Flutter's page editor.
@@ -228,7 +240,7 @@ Under `hexlore_flutter/test/fixtures/converter/` (the plugin vendors them):
   vault folder the export writes. `test/notes_export_test.dart` runs it
   (`HEXLORE_WRITE_CONVERTER=1` regenerates `expected/`).
 - `plugin_to_flutter/` — the plugin's direction, run by
-  `obsidian-plugin/test/convert.test.ts`.
+  the plugin's `test/convert.test.ts`.
 
 ## 7. Mapped keys
 

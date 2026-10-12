@@ -1,4 +1,4 @@
-// Port of Flutter's lib/core/variant_ids.dart (decision 31, plan item 1.6).
+// Port of Flutter's lib/core/variant_ids.dart (decision 31).
 //
 // In memory a variant is an INDEX (the renderer's tables are index-ordered);
 // on disk, from format 2 on, it is an id like "forest/dense". Ids are never

@@ -1,0 +1,38 @@
+name: CI
+
+# Takes over from the Flutter repository's obsidian-plugin.yml once the
+# plugin is a repository of its own (GitHub ignores workflows in subfolders,
+# so this file does nothing before then).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint · Test · Build (${{ matrix.os }})
+    # Windows too: the export writer and the vault paths meet its file
+    # locks and separators there.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # The build would copy into the dev vault; CI has no reason to.
+      - run: npm run build
+        env:
+          HEXLORE_VAULT: none

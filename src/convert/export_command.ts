@@ -1,4 +1,4 @@
-// "Export to HexLore (Flutter)…" from Obsidian (plan item 2.7): gathers
+// "Export as a campaign folder…" from Obsidian (plan item 2.7): gathers
 // the map, its index links, its sections and the notes (docs/converter.md
 // §5.1), plans the Flutter campaign (flutter_export.ts) and writes it with
 // Node's fs into a folder OUTSIDE the vault. Desktop only.

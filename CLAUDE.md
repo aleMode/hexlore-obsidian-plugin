@@ -1,29 +1,39 @@
 # CLAUDE.md — HexLore for Obsidian
 
-The Obsidian port of HexLore. **For now it lives in `obsidian-plugin/` of the
-Flutter repository** (one GitHub repo, so both sync together); it moves to its
-own repository later (`git subtree split --prefix=obsidian-plugin` keeps its
-history). Nothing in this folder may depend on that: write it as if it were a
-repository of its own, and keep anything private out of it. **Read
-`../obsidian-plugin-plan.md` §3 before starting an item** (the numbers
-2.0–2.11 below are that plan's). `../CLAUDE.md`'s decision index explains the
-WHY behind every rule mirrored here.
+The Obsidian port of HexLore. It may still sit in `obsidian-plugin/` of the
+Flutter repository, or already be a repository of its own: nothing here may
+depend on which. Write it as a repository of its own (no path outside this
+folder except through `$HEXLORE_FLUTTER` / `$HEXLORE_VAULT`), and keep
+anything private out of it.
+
+- **`docs/design.md`** is the design record: "§1.x" is a decision, "item 2.x"
+  a build step (its §3 says what is built and what is left), "V1…V10" a fact
+  to check. Read the item before starting on it.
+- **"Decision N"** is a Flutter decision record: index in
+  `vendor/docs/decisions/README.md`, the WHY behind every rule mirrored here.
+- `docs/technical-manual.md` (how it is built), `docs/user-guide.md`,
+  `docs/performance.md` (the renderer benchmark; compare against it).
 
 Node comes from fnm: run `eval "$(fnm env)"` in a fresh shell.
 `npm test` (Vitest) · `npm run lint` · `npm run build` · `npm run dev` (watch).
 
 ## The contract comes from Flutter
 
-`vendor/` is a COPY of the Flutter repo's conformance fixtures,
-`docs/format-2.md`, the player assets (render spec, texture and glyph tables)
-and `variant_ids.lock`. `vendor/SOURCE` names the Flutter commit.
+`vendor/` is a COPY of the Flutter repo's conformance fixtures, converter
+fixture pairs, `docs/format-2.md`, `docs/converter.md`, decision records
+(`docs/decisions/`, plus the importer's as `importer.md`), the player assets
+(render spec, texture and glyph tables) and `variant_ids.lock`.
+`vendor/SOURCE` names the Flutter commit. `npm run vendor` finds the Flutter
+repository through `$HEXLORE_FLUTTER` (else `..` while the plugin sits inside
+it, else `../software_hexlore`).
 
 - Never edit `vendor/` by hand. Change Flutter, regenerate its fixtures
   (`HEXLORE_WRITE_CONFORMANCE=1 flutter test test/conformance_test.dart`),
   commit there, then `npm run vendor` here, in the same piece of work.
 - `test/conformance.test.ts` runs every fixture case. A function is ported
   when it's registered in `ported` and its cases pass; unported ones show as
-  todos, so the todo list is the remaining `core` work (item 2.1).
+  todos. Every function is ported today (item 2.1), so a todo means Flutter
+  added one.
 - Comparison rules: `vendor/conformance/README.md` (1e-9 relative for
   floats, exact `hash2`).
 
@@ -183,7 +193,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
   map; the selection, regions, sketch tools, travel votes — no display
   choices). `main.ts` switches a Markdown leaf on an index to the map view
-  ("Open as Markdown" to go back).
+  ("Open as Markdown" to go back) and holds the commands ("Create a new
+  map…" is the way into a vault with no map yet).
 - Input (as Flutter's canvas): left-drag = the tool (select: rubber band);
   middle-drag / Space+drag / trackpad scroll pan; wheel and pinch zoom;
   right-click = cell menu. Raw pointer events only. Wheel vs trackpad is
@@ -266,7 +277,7 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   panel. "Sketch overlay" (Display & overlays) shows it in the hex view
   faintly, or its labels only (the mode is kept while hidden).
 - The importer (item 2.9, decisions 12–12l; READ
-  `../hexlore_flutter/lib/importer/CLAUDE.md` before changing it):
+  `vendor/docs/decisions/importer.md` before changing it):
   `src/importer/` ports Flutter's `lib/importer/` file for file, on plain
   RGBA `Raster`s (`raster.ts` mirrors package:image's average resize,
   grayscale and truncating stores). Calibration, sampler, Lab + the
@@ -300,9 +311,9 @@ nesting). Body: two sections are the plugin's, same line grammar —
 principal note); `## Regions`: `- region_001 :: [[Region note]]` (the note
 encounters are rolled from; Flutter's region `page_file` is kept as is).
 Everything else in the file is left byte for byte; a section line that does
-not parse is kept verbatim and reported, never dropped. Not yet in
-`docs/format-2.md`: it gets recorded with the converter (plan item 1.11) —
-keep this description and the code in step until then.
+not parse is kept verbatim and reported, never dropped. The contract is
+`vendor/docs/converter.md` §3: a grammar change is made there first (in the
+Flutter repository, by its change procedure), then here.
 
 ## Rules that bite
 
@@ -322,10 +333,12 @@ never in synced files (§1.2).
 ## Dev vault
 
 The dev vault holds a real campaign (`purezza`, exported from Flutter), so it
-is NOT part of the plugin: it is `../obsidian-test-vault/`, committed in the
-(private) Flutter repository, and `test-vault` here is a git-ignored symlink
-to it. Every build (`npm run dev` / `npm run build`) COPIES `main.js`,
-`manifest.json` and `styles.css` into that vault's
+is NEVER part of this repository: it lives in a private place of its own
+(`../obsidian-test-vault/` by default: inside the Flutter repository while
+the plugin sits there, its own private repository after the split), and
+`test-vault` here is a git-ignored symlink to it (`test/renderer.test.ts`
+renders its campaign when present). Every build (`npm run dev` / `npm run
+build`) COPIES `main.js`, `manifest.json` and `styles.css` into that vault's
 `.obsidian/plugins/hexlore/` (copies, so a machine that never builds can open
 the vault as it is); `HEXLORE_VAULT=<path>` installs into another vault,
 `HEXLORE_VAULT=none` skips it. Commit the vault's copy with the source change,

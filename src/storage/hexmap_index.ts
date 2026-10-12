@@ -3,7 +3,7 @@
 // It holds only LINKS, as plain Markdown lines — Obsidian tracks wikilinks
 // in ordinary lines (not in code blocks) and rewrites them when a note is
 // renamed, which is the whole point. Grammar, version 1 (`hexlore-index: 1`
-// in the frontmatter; to be recorded with the converter, plan item 1.11):
+// in the frontmatter; the contract is vendor/docs/converter.md §3):
 //
 //   ## Hexes
 //   - q5_r-2 :: [[Main note]] · [[Other note]]

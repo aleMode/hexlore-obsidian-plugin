@@ -32,6 +32,8 @@ const paths = [
 	'hexlore_flutter/test/fixtures/conformance',
 	'docs/format-2.md',
 	'docs/converter.md',
+	'docs/decisions',
+	'hexlore_flutter/lib/importer/CLAUDE.md',
 	'hexlore_flutter/test/fixtures/converter',
 	'hexlore_flutter/assets/player',
 	'hexlore_flutter/tool/variant_ids.lock',
@@ -47,13 +49,18 @@ if (git('status', '--porcelain', '--', ...paths)) {
 
 const out = join(here, 'vendor');
 rmSync(out, { recursive: true, force: true });
-for (const d of ['conformance', 'docs', 'player']) mkdirSync(join(out, d), { recursive: true });
+for (const d of ['conformance', 'docs/decisions', 'player']) mkdirSync(join(out, d), { recursive: true });
 
 const conformance = join(app, 'test/fixtures/conformance');
 for (const f of readdirSync(conformance)) {
 	if (f.endsWith('.json') || f === 'README.md') cpSync(join(conformance, f), join(out, 'conformance', f));
 }
 for (const f of ['format-2.md', 'converter.md']) cpSync(join(src, 'docs', f), join(out, 'docs', f));
+// The decision records: "decision N" in this repository's code and docs.
+for (const f of readdirSync(join(src, 'docs/decisions'))) {
+	if (f.endsWith('.md')) cpSync(join(src, 'docs/decisions', f), join(out, 'docs/decisions', f));
+}
+cpSync(join(app, 'lib/importer/CLAUDE.md'), join(out, 'docs/decisions/importer.md'));
 cpSync(join(app, 'test/fixtures/converter'), join(out, 'converter'), { recursive: true });
 for (const f of readdirSync(join(app, 'assets/player'))) cpSync(join(app, 'assets/player', f), join(out, 'player', f));
 cpSync(join(app, 'tool/variant_ids.lock'), join(out, 'variant_ids.lock'));

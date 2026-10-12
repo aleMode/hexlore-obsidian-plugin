@@ -1,4 +1,4 @@
-// The ART REGISTRY (obsidian-plugin-plan.md §1.7): the one place that knows
+// The ART REGISTRY (docs/design.md §1.7): the one place that knows
 // which drawing stands for (biome | feature, variant). The renderer asks it;
 // the brush menu, the credits and the texture cache keys derive from it.
 //

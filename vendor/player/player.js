@@ -91,8 +91,8 @@ function* cellsInView() {
   }
 }
 
-// Canonical river vertex (q, r, corner) -> pixel; mirrors app/geometry.py
-// vertex_pixel (corner 0 at 0deg, corner 1 at 60deg).
+// Canonical river vertex (q, r, corner) -> pixel; mirrors core/geometry.dart
+// vertexPixel (corner 0 at 0deg, corner 1 at 60deg).
 function vertexPixel(q, r, c) {
   const p = axialToPixel(q, r);
   const a = (Math.PI / 180) * (60 * c);
@@ -110,8 +110,8 @@ function nodePixel(kind, q, r, k) {
   return { x: p.x + ap * Math.cos(a), y: p.y + ap * Math.sin(a) };
 }
 
-// Catmull-Rom -> cubic Bezier through screen points; mirrors the desktop
-// river smoothing (app/river_item.py _catmull_rom_path).
+// Catmull-Rom -> cubic Bezier through screen points; mirrors the GM canvas's
+// river smoothing (app/hex_map.dart).
 function smoothPath(pts) {
   ctx.beginPath();
   if (!pts.length) return;
@@ -187,7 +187,7 @@ function centerOnContent() {
   view.oy = viewH / 2 - cy * view.scale;
 }
 
-// River stroke constants; mirror app/river_item.py (border/water/glint).
+// River stroke constants; mirror app/hex_map.dart (border/water/glint).
 const RIVER_BORDER = { color: "#5C3210", w: 8.0 };
 const RIVER_WATER  = { color: "#3A7DBF", w: 5.0 };
 const RIVER_GLINT  = { color: "rgba(107,174,214,0.6)", w: 1.8 };

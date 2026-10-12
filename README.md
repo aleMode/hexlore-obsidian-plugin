@@ -1,26 +1,54 @@
 # HexLore for Obsidian
 
-A hex-crawl map builder, viewer and player server inside Obsidian: the
-Obsidian port of the HexLore Flutter app. Work in progress; installed by hand
-for now.
+A hex-crawl **map builder, viewer and player server** inside Obsidian. Paint
+a hex map, link your notes to its hexes, and show your players a live map in
+their browser that reveals only what they have found. Obsidian keeps the
+notes; HexLore keeps the map.
+
+It is the Obsidian version of the HexLore desktop app and reads and writes
+the same map files, so a campaign can move between the two.
+
+**Status:** personal use, installed by hand (or with BRAT). Not in the
+community directory yet.
+
+## Install
+
+Copy `main.js`, `manifest.json` and `styles.css` from a release into
+`<vault>/.obsidian/plugins/hexlore/`, then enable **HexLore** under
+*Settings → Community plugins*. Start with the command **HexLore: Create a
+new map…**.
+
+## Documentation
+
+| Document | For |
+|---|---|
+| [User guide](docs/user-guide.md) | using the plugin |
+| [Technical manual](docs/technical-manual.md) | how it is built |
+| [Design record](docs/design.md) | the design decisions, the build record, what is left |
+| [Performance](docs/performance.md) | the renderer benchmark and its results |
+| [CLAUDE.md](CLAUDE.md) | the rules for changing the code |
+| `vendor/docs/` | the map format, the converter contract and the decision records, copied from the HexLore app |
 
 ## Develop
 
 ```sh
 eval "$(fnm env)"          # Node via fnm
 npm install
-npm test                   # conformance fixtures vs the TypeScript core
+npm test                   # Vitest, including the conformance fixtures
+npm run lint
 npm run dev                # rebuild main.js on change, copied into the dev vault
-npm run vendor             # re-copy the contract from the Flutter repository
+npm run build              # type-check + production bundle
+npm run vendor             # re-copy the contract from the HexLore app's repository
 ```
 
-## Try it without building
+Each build is copied into a dev vault: `$HEXLORE_VAULT`, else
+`../obsidian-test-vault` (`HEXLORE_VAULT=none` to skip). `npm run vendor`
+finds the HexLore app's repository through `$HEXLORE_FLUTTER`.
 
-Open `../obsidian-test-vault` as a vault in Obsidian (Open folder as vault) and
-turn on community plugins: the built plugin is already in it
-(`.obsidian/plugins/hexlore/`), refreshed by every build. The vault holds two
-maps: `purezza.hexmap.md` (the map exported earlier, for editing tests) and
-`purezza from HexLore/purezza.hexmap.md` (the full export, with the Flutter
-pages as notes).
+## Credits
 
-See `CLAUDE.md` for how this repository stays in step with the Flutter app.
+Feature and biome icons from [game-icons.net](https://game-icons.net)
+(CC BY 3.0; authors listed in *About and credits*). Illustrated terrain
+symbols from Azgaar's Fantasy Map Generator (MIT). Strokes by
+[perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT);
+PDFs by [pdf-lib](https://pdf-lib.js.org) (MIT).

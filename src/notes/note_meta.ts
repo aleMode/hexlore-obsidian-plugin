@@ -14,7 +14,7 @@
 //
 // `location` is one link or a list of links ("[[Base Culto]]"). These are
 // Flutter's NPC and quest fields under the same names, so the converter
-// (plan item 1.11) maps them one to one; the body holds the description
+// (vendor/docs/converter.md) maps them one to one; the body holds the description
 // (an NPC's) or the GM notes (a quest's).
 
 export type NoteKind = 'note' | 'place' | 'npc' | 'quest';

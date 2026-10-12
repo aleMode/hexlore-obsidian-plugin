@@ -5,6 +5,7 @@ import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './setting
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
 import { StoreRegistry } from './storage/store_registry';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
+import { NewMapModal } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
 
@@ -43,6 +44,16 @@ export default class HexLorePlugin extends Plugin {
 		// Ctrl-hover on a hex previews its principal note (Page preview).
 		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Hex maps', defaultMod: true });
 
+		// The map menu has "New map…" too, but a vault with no map needs a way in.
+		this.addCommand({
+			id: 'new-map',
+			name: 'Create a new map…',
+			callback: () => {
+				const parent = this.app.workspace.getActiveFile()?.parent;
+				const folder = parent && !parent.isRoot() ? parent.path : '';
+				new NewMapModal(this.app, folder, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
+			},
+		});
 		this.addCommand({
 			id: 'show-panel',
 			name: 'Show the side panel',
@@ -218,7 +229,6 @@ export default class HexLorePlugin extends Plugin {
 		await leaf.setViewState({ type: MAP_VIEW, active: true, state: { file: file.path } });
 	}
 
-	/** The panel lives in the right sidebar; [reveal] brings it to the front. */
 	/** The top bar's button: hide the panel when it is showing, else show it. */
 	async togglePanel(): Promise<void> {
 		const ws = this.app.workspace;
@@ -232,6 +242,7 @@ export default class HexLorePlugin extends Plugin {
 		await this.showPanel(true);
 	}
 
+	/** The panel lives in the right sidebar; [reveal] brings it to the front. */
 	async showPanel(reveal: boolean): Promise<void> {
 		const ws = this.app.workspace;
 		let leaf = ws.getLeavesOfType(INSPECTOR_VIEW)[0];

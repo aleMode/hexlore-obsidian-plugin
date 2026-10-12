@@ -20,8 +20,6 @@ export interface ToolInfo {
 	key: string;
 	icon: string;
 	label: string;
-	/** Not built yet (item 2.4, stage B): shown, disabled. */
-	later?: boolean;
 }
 
 export const TOOLS: ToolInfo[] = [
@@ -117,9 +115,8 @@ export class Toolbar {
 		for (const t of TOOLS) {
 			const b = tools.createDiv({ cls: 'clickable-icon hexlore-tool', attr: { 'data-tool': t.id } });
 			setIcon(b, t.icon);
-			setTooltip(b, `${t.label} (${t.key})${t.later ? ' — coming next' : ''}`, { placement: 'right' });
-			if (t.later) b.addClass('is-disabled');
-			else b.addEventListener('click', () => host.setTool(t.id));
+			setTooltip(b, `${t.label} (${t.key})`, { placement: 'right' });
+			b.addEventListener('click', () => host.setTool(t.id));
 			this.buttons.set(t.id, b);
 		}
 		this.brushRow = this.el.createDiv({ cls: 'hexlore-toolbar-group hexlore-brush' });

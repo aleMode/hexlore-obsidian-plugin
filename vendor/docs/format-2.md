@@ -3,7 +3,7 @@
 The on-disk layout of a HexLore campaign, as written by the Flutter app from
 format 2 on, and as the Obsidian plugin will read and write it. This document
 is the **map format only**. How notes, NPCs, quests and pages are carried
-between the two apps is `docs/converter.md`'s job (plan items 1.11–1.13).
+between the two apps is `docs/converter.md`'s job (`docs/converter.md`).
 
 The code is the reference implementation: `lib/storage/file_manager.dart`
 (layout, migration), `lib/core/json_lines.dart` (encoding),
@@ -113,7 +113,7 @@ The code is the reference implementation: `lib/storage/file_manager.dart`
 GM-only and never read by the player server: everything except
 `campaign.json`, `paint/`, `rivers/`, `routes/` and `player/revealed.json`.
 The plugin's own index (`<Name>.hexmap.md`) and its sections are specified
-with the converter (plan item 1.11), once the plugin's notes model exists.
+in `docs/converter.md` §3.
 
 ---
 
