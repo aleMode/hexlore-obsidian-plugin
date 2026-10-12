@@ -18,6 +18,10 @@ entries go under *Unreleased*; a release moves them under its version.
 - Export image (PNG / PDF) and Export as a campaign folder (for the HexLore
   app).
 - Command "Create a new map…".
+- A new map gets a folder of its own, with a numbered folder for each
+  section (Places, Regions, NPCs, Factions, Quests, Adventures, GM notes,
+  Miscellanea), so two maps in one vault keep their notes apart. Setting
+  "A folder for each new map" turns it off.
 - Top bar mirroring the HexLore app's title bar; two-finger pinch and pan.
 
 ### Changed

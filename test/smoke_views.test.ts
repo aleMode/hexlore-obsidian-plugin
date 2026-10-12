@@ -220,6 +220,7 @@ describe('the dialogs', () => {
 		const tab = new HexLoreSettingTab(app as never, plugin);
 		const defs = JSON.stringify(tab.getSettingDefinitions());
 		expect(defs).toContain('templatesFolder');
+		expect(defs).toContain('mapFolders');
 		// Switched from the players menu only (one place per setting).
 		expect(defs).not.toContain('playerLan');
 	});

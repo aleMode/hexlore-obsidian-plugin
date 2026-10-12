@@ -41,7 +41,7 @@ import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { TopBar } from './top_bar';
 import { DisplayPanel, type DisplayPanelState } from './display_panel';
 import { WheelClassifier } from './wheel_intent';
-import { MapPicker, NewMapModal, QuickJumpModal, RIVER_WIDTH_PRESETS, RiverWidthModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
+import { MapPicker, NewMapModal, newMapFolder, QuickJumpModal, RIVER_WIDTH_PRESETS, RiverWidthModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
 import { NewNoteModal } from './inspector_view';
 import { createNote, notesInFolder, noteKind, templateFiles } from './vault_notes';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
@@ -269,6 +269,8 @@ export class MapView extends ItemView {
 			playerLan: () => boolean;
 			setPlayerLan: (on: boolean) => void;
 			templatesFolder: () => string;
+			/** "New map" gives the map a folder of its own (a setting). */
+			mapFolders: () => boolean;
 		},
 	) {
 		super(leaf);
@@ -802,8 +804,8 @@ export class MapView extends ItemView {
 	}
 
 	private newMap(): void {
-		const folder = this.file?.parent && !this.file.parent.isRoot() ? this.file.parent.path : '';
-		new NewMapModal(this.app, folder, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
+		const own = this.panel.mapFolders();
+		new NewMapModal(this.app, newMapFolder(this.file, own), own, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
 	}
 
 	private scaleDialog(): void {

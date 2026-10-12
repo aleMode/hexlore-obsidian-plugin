@@ -11,11 +11,14 @@ export interface HexLoreSettings {
 	templatesFolder: string;
 	/** The player view is reachable from the local network, not just here. */
 	playerLan: boolean;
+	/** "New map" gives each map a folder of its own, with its section folders. */
+	mapFolders: boolean;
 }
 
 export const DEFAULT_SETTINGS: HexLoreSettings = {
 	templatesFolder: 'Templates',
 	playerLan: false,
+	mapFolders: true,
 };
 
 /** Read settings tolerantly: unknown keys are kept (a newer build's). */
@@ -25,12 +28,24 @@ export function readSettings(raw: unknown): HexLoreSettings & Record<string, unk
 		...o,
 		templatesFolder: typeof o.templatesFolder === 'string' ? o.templatesFolder : DEFAULT_SETTINGS.templatesFolder,
 		playerLan: typeof o.playerLan === 'boolean' ? o.playerLan : DEFAULT_SETTINGS.playerLan,
+		mapFolders: typeof o.mapFolders === 'boolean' ? o.mapFolders : DEFAULT_SETTINGS.mapFolders,
 	};
 }
 
 export class HexLoreSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
+			{
+				type: 'group',
+				heading: 'Maps',
+				items: [
+					{
+						name: 'A folder for each new map',
+						desc: 'A new map gets a folder of its own: the map note, its data folder and a numbered folder for each section (places, regions, characters, factions, quests, adventures, GM notes, miscellanea). Off: the map note and its data folder go straight into the folder you choose, and the map uses the default sections at the vault root. Maps that already exist are not changed.',
+						control: { type: 'toggle', key: 'mapFolders' },
+					},
+				],
+			},
 			{
 				type: 'group',
 				heading: 'Notes',
