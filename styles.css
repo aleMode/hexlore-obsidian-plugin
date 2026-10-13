@@ -1112,3 +1112,140 @@
 	z-index: calc(var(--layer-popover) - 1);
 	background: var(--background-primary);
 }
+
+/* ----- Show maps together (atlas_view.ts) ----------------------------------- */
+
+.hexlore-atlas-view {
+	padding: 0 !important;
+	overflow: hidden;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+
+.hexlore-atlas-bar {
+	display: flex;
+	gap: 6px;
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex: 0 0 auto;
+}
+
+.hexlore-atlas-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.hexlore-atlas-button .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.hexlore-atlas-button.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.hexlore-atlas-stage {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	background: #1a1a2e; /* the maps' own background */
+	touch-action: none;
+	cursor: grab;
+}
+
+.hexlore-atlas-stage.is-panning {
+	cursor: grabbing;
+}
+
+.hexlore-atlas-stage.is-placing {
+	cursor: crosshair;
+}
+
+.hexlore-atlas-stage.is-resize {
+	cursor: nwse-resize;
+}
+
+.hexlore-atlas-layer {
+	position: absolute;
+	inset: 0;
+	opacity: var(--atlas-opacity, 1);
+	clip-path: var(--atlas-clip, none);
+	pointer-events: none;
+}
+
+.hexlore-atlas-layer.is-hidden {
+	display: none;
+}
+
+.hexlore-atlas-layer canvas,
+.hexlore-atlas-overlay {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	display: block;
+	pointer-events: none;
+}
+
+/* A map's own overlay canvas (hover, selection) has nothing to show here. */
+.hexlore-atlas-layer .hexlore-map-overlay {
+	display: none;
+}
+
+.hexlore-atlas-list {
+	position: absolute;
+	top: 46px;
+	left: 8px;
+	max-width: 300px;
+	max-height: calc(100% - 60px);
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px;
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+}
+
+.hexlore-atlas-row.is-placing {
+	outline: 1px solid var(--interactive-accent);
+	border-radius: var(--radius-s);
+}
+
+.hexlore-atlas-row-head {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.hexlore-atlas-name {
+	font-weight: var(--font-semibold);
+}
+
+.hexlore-atlas-scale,
+.hexlore-atlas-empty {
+	color: var(--text-muted);
+}
+
+.hexlore-atlas-mismatch {
+	color: var(--text-warning);
+}
+
+.hexlore-atlas-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 2px;
+}
+
+.hexlore-atlas-actions button {
+	padding: 0 6px;
+	height: auto;
+	font-size: var(--font-ui-smaller);
+}

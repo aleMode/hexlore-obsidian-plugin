@@ -4,6 +4,8 @@ import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
 import { StoreRegistry } from './storage/store_registry';
+import { renamePaths, type AtlasLayout } from './view/atlas_layout';
+import { ATLAS_VIEW, AtlasPickerModal, AtlasView } from './view/atlas_view';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
 import { NewMapModal, newMapFolder } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
@@ -39,6 +41,13 @@ export default class HexLorePlugin extends Plugin {
 				},
 				templatesFolder: () => this.settings.templatesFolder,
 				mapFolders: () => this.settings.mapFolders,
+				mapsTogether: () => this.pickMapsTogether(),
+			}));
+		this.registerView(ATLAS_VIEW, (leaf) => new AtlasView(leaf, {
+				layout: () => this.atlasLayout(),
+				setLayout: (l) => this.setAtlasLayout(l),
+				stores: this.stores,
+				pick: () => this.pickMapsTogether(false),
 			}));
 		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
@@ -54,6 +63,11 @@ export default class HexLorePlugin extends Plugin {
 				const folder = newMapFolder(this.app.workspace.getActiveFile(), own);
 				new NewMapModal(this.app, folder, own, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
 			},
+		});
+		this.addCommand({
+			id: 'show-maps-together',
+			name: 'Show maps together…',
+			callback: () => this.pickMapsTogether(),
 		});
 		this.addCommand({
 			id: 'show-panel',
@@ -138,6 +152,13 @@ export default class HexLorePlugin extends Plugin {
 		// Renaming the data folder, or the index, must not cut the link between
 		// them: `data:` is a plain relative path Obsidian does not update.
 		this.registerEvent(this.app.vault.on('rename', (f, old) => void this.followDataRename(f, old)));
+		// "Show maps together" keeps its maps by index path: it follows them.
+		this.registerEvent(
+			this.app.vault.on('rename', (f, old) => {
+				const next = renamePaths(this.settings.atlas, old, f.path);
+				if (next !== this.settings.atlas) this.setAtlasLayout(next);
+			}),
+		);
 
 		// A `.hexmap.md` index opens as its map (the Excalidraw pattern): when
 		// a Markdown view lands on one, switch that leaf to the map view.
@@ -206,6 +227,33 @@ export default class HexLorePlugin extends Plugin {
 			if ('problem' in fix) new Notice(fix.problem, 15000);
 			else await this.app.fileManager.processFrontMatter(idx, (fm: Record<string, unknown>) => (fm.data = fix.data));
 		}
+	}
+
+	/** A copy of the "Show maps together" layout, to change and hand back. */
+	private atlasLayout(): AtlasLayout {
+		const l = this.settings.atlas;
+		return { shown: [...l.shown], maps: Object.fromEntries(Object.entries(l.maps).map(([p, v]) => [p, { ...v }])) };
+	}
+
+	private setAtlasLayout(l: AtlasLayout): void {
+		this.settings.atlas = l;
+		void this.saveSettings();
+		for (const leaf of this.app.workspace.getLeavesOfType(ATLAS_VIEW)) if (leaf.view instanceof AtlasView) void leaf.view.sync();
+	}
+
+	/** Choose the maps shown together; [open]: then show them (from a view
+	 *  already showing them, the choice is enough). */
+	private pickMapsTogether(open = true): void {
+		new AtlasPickerModal(this.app, () => this.atlasLayout(), (l) => this.setAtlasLayout(l), () => {
+			if (open) void this.showMapsTogether();
+		}).open();
+	}
+
+	private async showMapsTogether(): Promise<void> {
+		const ws = this.app.workspace;
+		const leaf = ws.getLeavesOfType(ATLAS_VIEW)[0] ?? ws.getLeaf('tab');
+		if (leaf.getViewState().type !== ATLAS_VIEW) await leaf.setViewState({ type: ATLAS_VIEW, active: true });
+		await ws.revealLeaf(leaf);
 	}
 
 	async saveSettings(): Promise<void> {

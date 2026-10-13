@@ -23,6 +23,10 @@ entries go under *Unreleased*; a release moves them under its version.
   Miscellanea), so two maps in one vault keep their notes apart. Setting
   "A folder for each new map" turns it off.
 - Top bar mirroring the HexLore app's title bar; two-finger pinch and pan.
+- "Show maps together…": maps at different scales (say 50, 5 and 1 mile
+  hexes) laid over one another at their real sizes, each fading in as you
+  zoom to its level. GM only and read-only; drag and resize maps into place
+  when unlocked.
 
 ### Changed
 - Renderer: tiles, atlas, redraws limited to what an edit touched

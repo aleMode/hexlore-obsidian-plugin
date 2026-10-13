@@ -62,8 +62,9 @@ export class TilePool {
 }
 
 /** A tile's 2D context. Tiles are painted edge to edge, so opaque: the
- *  compositor need not blend them. A pooled canvas keeps its context. */
-const tileContext = (s: Surface) => s.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
+ *  compositor need not blend them. A pooled canvas keeps its context.
+ *  [transparent]: a map laid over another ("Show maps together"). */
+const tileContext = (s: Surface, transparent: boolean) => s.getContext('2d', { alpha: transparent }) as CanvasRenderingContext2D;
 
 export class TileSet {
 	private readonly tiles = new Map<string, Surface>(); // insertion order = LRU
@@ -86,6 +87,9 @@ export class TileSet {
 		private readonly maxTiles = 256,
 		/** Where tiles come from and go back to (none: made and dropped). */
 		private readonly pool: TilePool | null = null,
+		/** Cleared, not filled with the background: what is under the map
+		 *  shows through where nothing is painted. */
+		private readonly transparent = false,
 	) {
 		this.revision = scene.revision;
 	}
@@ -158,8 +162,9 @@ export class TileSet {
 		for (let j = j0; j <= j1; j++) {
 			for (let i = i0; i <= i1; i++) {
 				const t = this.newTile();
-				const c = tileContext(t);
+				const c = tileContext(t, this.transparent);
 				c.setTransform(1, 0, 0, 1, 0, 0);
+				if (this.transparent) c.clearRect(0, 0, TILE, TILE); // a pooled tile still holds its last image
 				c.drawImage(block as CanvasImageSource, (i - i0) * TILE, (j - j0) * TILE, TILE, TILE, 0, 0, TILE, TILE);
 				this.hold(i, j, t, blockSoft);
 			}
@@ -172,10 +177,13 @@ export class TileSet {
 	private paintBlock(i: number, j: number, w: number, h: number): Surface {
 		const k = this.scale * this.key.dpr;
 		const surface = w === 1 && h === 1 ? this.newTile() : this.makeSurface(w * TILE, h * TILE);
-		const c = tileContext(surface);
+		const c = tileContext(surface, this.transparent);
 		c.setTransform(1, 0, 0, 1, 0, 0);
-		c.fillStyle = CANVAS_BG;
-		c.fillRect(0, 0, w * TILE, h * TILE);
+		if (this.transparent) c.clearRect(0, 0, w * TILE, h * TILE);
+		else {
+			c.fillStyle = CANVAS_BG;
+			c.fillRect(0, 0, w * TILE, h * TILE);
+		}
 		c.setTransform(k, 0, 0, k, -i * TILE, -j * TILE);
 		const [x0, y0] = this.sceneRect(i, j);
 		const [, , x1, y1] = this.sceneRect(i + w - 1, j + h - 1);

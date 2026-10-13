@@ -113,7 +113,7 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 - **Per-device state** (camera, style, blend, panel state) is in
   `app.saveLocalStorage`, never in synced files. **Vault settings** are in the
   plugin's `data.json` (the templates folder, the LAN switch, "A folder
-  for each new map").
+  for each new map", the "Show maps together" layout).
 - **A new map** (`createMap`, `view/map_menus.ts`) goes in a folder of its
   own: `<Name>/<Name>.hexmap.md`, `<Name>/<Name>.hexlore/` and the numbered
   section folders of `MAP_FOLDER_SECTIONS` (`storage/hexmap_index.ts`),
@@ -163,6 +163,30 @@ are kept (`extra` / `raw`) and written back.
   had to use a stand-in are redone while idle. Idle work runs one piece per
   `requestIdleCallback`.
 - Measured record and the benchmark: `docs/performance.md`.
+
+- **Show maps together** (`view/atlas_view.ts`, the maths in the pure
+  `view/atlas_layout.ts`): a read-only GM view of several maps in one WORLD
+  frame measured in miles (km converted). A map is placed by its centre and
+  a fit factor (1 = the size its `hex_distance` gives); its own MapCanvas
+  gets a camera derived from the world camera (`mapCamera`, set with
+  `MapCanvas.setCamera`, which bypasses the map view's zoom limits), is
+  TRANSPARENT (`new MapCanvas(…, { transparent: true })`: base, tiles and
+  overview cleared instead of filled; the map view stays opaque, cheaper to
+  composite) and paints only hexes with terrain (`MapScene.paintedOnly`: no
+  empty cells, no hex holding only a name or notes), sits in a layer
+  clipped to its grid (`clip-path`), and takes an opacity from its
+  on-screen hex size (`atlasOpacity`: in from 2 px, full 10–120 px, a ghost
+  by 240 px, gone at the renderer's own zoom limit). A map at opacity 0 or
+  off screen is hidden and not rendered. Coarsest at the bottom. The
+  canvases are sized to the stage at every paint (and a `ResizeObserver`
+  asks for one): Obsidian's `onResize` misses a view laid out after it
+  opened, and a canvas left at its old size is stretched. A hidden map's
+  layer measures 0, so its canvas is sized when it is shown again, never
+  while hidden (sized to 0, it stayed blank for good). Scenes are
+  rebuilt on the store's `saved` / `reloaded` events (stores shared with
+  the map views through the registry). The layout is `atlas` in
+  `data.json`; renames follow (`renamePaths`); the camera is per device.
+  Not in the shared contract: nothing is written to a map.
 
 ## 8. Notes and sections
 

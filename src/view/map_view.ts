@@ -109,7 +109,7 @@ export interface MapPanelState {
 
 const overlaysKey = (path: string) => `hexlore-overlays:${path}`;
 
-const DISPLAY_KEY = 'hexlore-display';
+export const DISPLAY_KEY = 'hexlore-display';
 const EDITOR_KEY = 'hexlore-editor';
 const DRAG_SLOP = 5; // px before a press becomes a drag
 const FOG_HIDE = '#E05555';
@@ -170,7 +170,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 	return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color'].includes((t as HTMLInputElement).type);
 }
 
-function makeSurface(w: number, h: number): Surface {
+export function makeSurface(w: number, h: number): Surface {
 	if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
 	const c = createEl('canvas');
 	c.width = w;
@@ -271,6 +271,8 @@ export class MapView extends ItemView {
 			templatesFolder: () => string;
 			/** "New map" gives the map a folder of its own (a setting). */
 			mapFolders: () => boolean;
+			/** "Show maps together…": pick the maps, then show them. */
+			mapsTogether: () => void;
 		},
 	) {
 		super(leaf);
@@ -779,6 +781,7 @@ export class MapView extends ItemView {
 				.setIcon('folder-open')
 				.onClick(() => new MapPicker(this.app, (f) => isMapIndex(this.app, f), (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open()),
 		);
+		menu.addItem((i) => i.setTitle('Show maps together…').setIcon('layers').onClick(() => this.panel.mapsTogether()));
 		menu.addSeparator();
 		label('Map');
 		menu.addItem((i) => i.setTitle('Map scale…').setIcon('ruler').setDisabled(ro).onClick(() => this.scaleDialog()));

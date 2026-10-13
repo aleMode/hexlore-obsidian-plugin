@@ -322,6 +322,13 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   (`underlay:` link + `import/underlay.json`), drawn translucent over the
   fills from Display & overlays. NOT ported: the optional Ollama
   classifier, and the multi-isolate fan-out (chunks yield to the UI instead).
+- "Show maps together" (§1.10, item 2.12): `view/atlas_view.ts` +
+  pure `view/atlas_layout.ts`. GM-only, read-only, maps in a world frame in
+  miles, one TRANSPARENT MapCanvas per map (`setCamera`; the scene
+  `paintedOnly`: nothing but painted hexes covers the map below), canvases
+  sized at every paint, layout in `data.json`
+  (`atlas`). Never write a placement into a map or the index: that would
+  make it contract.
 - `src/settings.ts` — vault settings (data.json), declarative
   `getSettingDefinitions` (Obsidian 1.13): only what has no better home
   (the templates folder, `mapFolders`: a new map gets a folder of its own
@@ -352,6 +359,11 @@ Flutter repository, by its change procedure), then here.
   every save by the other app a changed line in git.
 - **Unknown keys and values** are kept (`extra` / `raw`, as in Dart) and
   written back in place; assigning a field drops its raw value.
+- **A `Setting` is a thenable** (Obsidian's `Setting.then(cb)` calls
+  `cb(this)` and returns `this`): never resolve a promise with one, e.g.
+  `p.then((s) => row.setDesc(…))`. It loops forever in microtasks and
+  freezes Obsidian. Use braces. The test stand-in's `Setting.then` throws
+  instead, so the smoke tests catch it.
 - **Sort ties:** Dart's `List.sort` is unstable, JS's is stable. Equal keys
   can order differently (noted in `river_snap.ts`); the fixtures agree today.
 

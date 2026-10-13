@@ -560,8 +560,10 @@ export class MapPainter {
 		// overview band covers a small part of it.
 		for (const [q, r] of cellsInRect(x0, y0, x1, y1, scene.grid)) {
 			if (!scene.hexAt(q, r)) continue;
+			const look = scene.look(q, r, p.style);
+			if (scene.paintedOnly && !look.painted) continue;
 			const [cx, cy] = axialToPixel(q, r);
-			c.fillStyle = scene.look(q, r, p.style).drawn;
+			c.fillStyle = look.drawn;
 			c.fillRect(cx - s / 2, cy - s / 2, s, s);
 		}
 	}
@@ -674,8 +676,10 @@ export class MapPainter {
 		const [x0, y0, x1, y1] = p.rect;
 		const cells: Cell[] = [];
 		for (const [q, r] of cellsInRect(x0, y0, x1, y1, scene.grid)) {
+			const look = scene.look(q, r, p.style);
+			if (scene.paintedOnly && !look.painted) continue;
 			const [cx, cy] = axialToPixel(q, r);
-			cells.push({ q, r, cx, cy, look: scene.look(q, r, p.style) });
+			cells.push({ q, r, cx, cy, look });
 		}
 		return cells;
 	}
@@ -1065,7 +1069,7 @@ export class MapPainter {
 		// Labels overhang their cell: take one more ring of cells each side.
 		for (const [q, r] of cellsInRect(x0 - R, y0 - R, x1 + R, y1 + R, scene.grid)) {
 			const name = scene.hexAt(q, r)?.name;
-			if (!name) continue;
+			if (!name || (scene.paintedOnly && !scene.look(q, r, p.style).painted)) continue;
 			const [cx, cy] = axialToPixel(q, r);
 			const text = this.fitLabel(c, name);
 			const y = cy - R * SPEC.labelOffset;

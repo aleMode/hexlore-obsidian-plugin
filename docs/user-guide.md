@@ -140,6 +140,33 @@ edges), and show or hide threads, regions, borders, GM fog on hexes with no
 notes, player badges, the import underlay and the sketch overlay. Display
 choices are per device; overlay choices are per map.
 
+## Show maps together
+
+For maps of the same world at different scales (a continent in 50-mile
+hexes, a forest in 5-mile hexes, a city's surroundings in 1-mile hexes),
+**Show maps together…** (command palette, or **Map menu → Show maps
+together…**) lays them over one another at their real sizes. It is for you
+only: players never see it, and it changes no map.
+
+1. Tick the maps to show; each one is listed with its scale. **Show** opens
+   the view.
+2. Zoom in and out: each map comes in as you reach its own zoom and fades to
+   a faint ghost past it, so the detailed map shows over the coarse one.
+   A map too small to draw is still outlined, with its name. Only painted
+   hexes are drawn: empty hexes, and hexes with only a name or notes, let
+   the map below show through.
+3. The view is **Locked**: a drag pans, and a double-click opens the map
+   under the pointer. Click **Locked** to start **Arranging**: drag a map to
+   move it, or drag a corner to resize it about its centre. **Place** in the
+   list puts a map's centre where you click next. **Centre** shows a map at
+   its own zoom, and **Open** opens it.
+4. A new map is drawn at the size its own scale gives it. If you resize it
+   to match a source drawn off scale, the list says so (for example "Shown
+   at 1 hex ≈ 4.3 mi (the map says 5 mi)"), and **To scale** puts it back.
+
+Where each map sits is saved with the plugin's settings and synced with the
+vault; the zoom is per device. Renaming or moving a map keeps its place.
+
 ## The player view (desktop only)
 
 1. Click the **players** button (or the command **Start the player view for

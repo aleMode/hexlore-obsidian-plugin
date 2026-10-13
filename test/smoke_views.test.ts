@@ -8,11 +8,13 @@ import './mocks/dom';
 import { beforeAll, describe, expect, it } from 'vitest';
 // The mock itself (the same module the plugin gets as 'obsidian'), for its
 // test helpers.
-import { App, Menu, Modal, Notice, TFile, useApp, type WorkspaceLeaf } from './mocks/obsidian';
+import { App, Menu, Modal, Notice, Setting, TFile, useApp, type ToggleComponent, type WorkspaceLeaf } from './mocks/obsidian';
 import HexLorePlugin from '../src/main';
 import { MAP_VIEW, MapView } from '../src/view/map_view';
 import { INSPECTOR_VIEW, InspectorView } from '../src/view/inspector_view';
 import { SECTIONS_VIEW, SectionsView } from '../src/view/sections_view';
+import { ATLAS_VIEW, type AtlasView } from '../src/view/atlas_view';
+import { createMap } from '../src/view/map_menus';
 import { readTree } from './helpers/vault_folder';
 import { paintMap, stampIcon } from './helpers/importer_synth';
 import { SourceGrid } from '../src/importer/grid_calibration';
@@ -480,5 +482,112 @@ describe('touch', () => {
 		await tick();
 		expect(cam().scale).toBeGreaterThan(before.scale);
 		expect(map.mapState().editor!.model.hexes.size).toBe(hexes);
+	});
+});
+
+describe('maps together', () => {
+	const INDEX = 'Campaign/Fixture.hexmap.md';
+
+	it('lists every map with its scale, shows the ones ticked, and changes no map', async () => {
+		const files = () => app.vault.getFiles().map((f) => [f.path, app.vault.textOf(f.path)] as const);
+		const before = files();
+		(plugin as unknown as { pickMapsTogether(): void }).pickMapsTogether();
+		await tick(20);
+		const modal = Modal.open.at(-1)!;
+		const row = Setting.all.find((s) => modal.contentEl.contains(s.settingEl) && s.nameEl.textContent === 'Fixture')!;
+		expect(row.descEl.textContent).toMatch(/^1 hex = \d/);
+		(row.components[0] as ToggleComponent).change(true);
+		expect(plugin.settings.atlas.shown).toEqual([INDEX]);
+		Array.from(modal.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Show')!.click();
+		await tick(30);
+		const view = app.workspace.getLeavesOfType(ATLAS_VIEW)[0]!.view as unknown as AtlasView;
+		expect(view.contentEl.querySelectorAll('.hexlore-atlas-layer').length).toBe(1);
+		expect(view.contentEl.querySelector('.hexlore-atlas-name')?.textContent).toBe('Fixture');
+		// Never placed: put at the centre, to scale.
+		expect(plugin.settings.atlas.maps[INDEX]?.fit).toBe(1);
+		expect(files()).toEqual(before);
+	});
+
+	it('locked, a drag pans; unlocked, it moves the map and saves where it went', async () => {
+		const view = app.workspace.getLeavesOfType(ATLAS_VIEW)[0]!.view as unknown as AtlasView;
+		const stage = view.contentEl.querySelector('.hexlore-atlas-stage') as HTMLElement;
+		Object.defineProperty(stage, 'clientWidth', { value: 800, configurable: true });
+		Object.defineProperty(stage, 'clientHeight', { value: 600, configurable: true });
+		view.onResize();
+		await tick();
+		const drag = (x0: number, y0: number, x1: number, y1: number) => {
+			const ev = (type: string, x: number, y: number) => new PointerEvent(type, { clientX: x, clientY: y, button: 0, pointerId: 3, pointerType: 'mouse', bubbles: true });
+			stage.dispatchEvent(ev('pointerdown', x0, y0));
+			stage.dispatchEvent(ev('pointermove', (x0 + x1) / 2, (y0 + y1) / 2));
+			stage.dispatchEvent(ev('pointermove', x1, y1));
+			stage.dispatchEvent(ev('pointerup', x1, y1));
+		};
+		const placed = () => ({ ...plugin.settings.atlas.maps[INDEX]! });
+		const start = placed();
+		drag(400, 300, 450, 330);
+		expect(placed()).toEqual(start);
+		const lock = Array.from(view.contentEl.querySelectorAll('.hexlore-atlas-button')).find((b) => b.textContent === 'Locked') as HTMLElement;
+		lock.click();
+		drag(400, 300, 450, 330);
+		const moved = placed();
+		expect(moved.x).toBeGreaterThan(start.x);
+		expect(moved.y).toBeGreaterThan(start.y);
+		expect(moved.fit).toBe(1);
+		await tick();
+		expect(view.contentEl.querySelector('.hexlore-atlas-layer')!.classList.contains('is-hidden')).toBe(false);
+	});
+
+	it('the outlines follow the view’s size even when no resize was reported', async () => {
+		const view = app.workspace.getLeavesOfType(ATLAS_VIEW)[0]!.view as unknown as AtlasView;
+		const stage = view.contentEl.querySelector('.hexlore-atlas-stage') as HTMLElement;
+		const overlay = view.contentEl.querySelector('.hexlore-atlas-overlay') as HTMLCanvasElement;
+		// The test DOM lays nothing out: the stage and the map layers (which
+		// fill it) are given their new size by hand.
+		for (const el of [stage, ...Array.from(view.contentEl.querySelectorAll<HTMLElement>('.hexlore-atlas-layer'))]) {
+			Object.defineProperty(el, 'clientWidth', { value: 1000, configurable: true });
+			Object.defineProperty(el, 'clientHeight', { value: 700, configurable: true });
+		}
+		stage.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, deltaMode: 1, clientX: 500, clientY: 350, bubbles: true, cancelable: true }));
+		await tick(10);
+		expect([overlay.width, overlay.height]).toEqual([1000, 700]);
+		// The maps' canvases too.
+		const base = view.contentEl.querySelector('.hexlore-atlas-layer canvas') as HTMLCanvasElement;
+		expect([base.width, base.height]).toEqual([1000, 700]);
+	});
+
+	it('a map hidden while the view changed size draws again when it comes back', async () => {
+		// A second map, ten times coarser: zoomed out, the fixture fades away.
+		const big = await createMap(app as never, '', 'Continent', 12, 12);
+		const meta = 'Continent.hexlore/campaign.json';
+		const metaFile = app.vault.getAbstractFileByPath(meta);
+		if (!(metaFile instanceof TFile)) throw new Error(`${meta} was not created`);
+		await app.vault.modify(metaFile, app.vault.textOf(meta)!.replace('"hex_distance": 6.0', '"hex_distance": 60.0'));
+		const set = (plugin as unknown as { setAtlasLayout(l: unknown): void }).setAtlasLayout.bind(plugin);
+		set({ shown: [INDEX, big.path], maps: { ...plugin.settings.atlas.maps } });
+		await tick(30);
+		const view = app.workspace.getLeavesOfType(ATLAS_VIEW)[0]!.view as unknown as AtlasView;
+		const stage = view.contentEl.querySelector('.hexlore-atlas-stage') as HTMLElement;
+		// Sizes as a browser reports them: none for a hidden element.
+		let W = 1000;
+		const sized = (el: HTMLElement) => {
+			Object.defineProperty(el, 'clientWidth', { get: () => (el.classList.contains('is-hidden') ? 0 : W), configurable: true });
+			Object.defineProperty(el, 'clientHeight', { get: () => (el.classList.contains('is-hidden') ? 0 : 700), configurable: true });
+		};
+		sized(stage);
+		view.contentEl.querySelectorAll<HTMLElement>('.hexlore-atlas-layer').forEach(sized);
+		const fixture = () => (view as unknown as { layers: Map<string, { host: HTMLElement; canvas: { size: [number, number] } }> }).layers.get(INDEX)!;
+		const wheel = (dy: number) => stage.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 1, clientX: 500, clientY: 350, bubbles: true, cancelable: true }));
+		for (let i = 0; i < 80; i++) wheel(3); // all the way out
+		await tick(20);
+		expect(fixture().host.classList.contains('is-hidden')).toBe(true);
+		W = 900; // the view changes size meanwhile (a sidebar, Obsidian's zoom)
+		wheel(0.1);
+		await tick(20);
+		// Back to it, at its own zoom ("Centre" in the list).
+		const row = [...Array.from(view.contentEl.querySelectorAll('.hexlore-atlas-row'))].find((r) => r.querySelector('.hexlore-atlas-name')?.textContent === 'Fixture')!;
+		Array.from(row.querySelectorAll('button')).find((b) => b.textContent === 'Centre')!.click();
+		await tick(20);
+		expect(fixture().host.classList.contains('is-hidden')).toBe(false);
+		expect(fixture().canvas.size).toEqual([900, 700]);
 	});
 });

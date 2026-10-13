@@ -275,6 +275,10 @@ export class MapScene {
 	regions: SceneRegion[];
 	threads: SceneThread[];
 	overlays: Overlays = DEFAULT_OVERLAYS;
+	/** Draw only the cells with terrain painted: no empty cells, no hexes
+	 *  holding only a name or notes ("Show maps together", where a map lies
+	 *  over another). Set before the first paint. */
+	paintedOnly = false;
 	/** Revealed cells, by cellKey. */
 	readonly revealed = new Set<number>();
 
