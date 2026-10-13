@@ -828,6 +828,17 @@ export class Setting {
 		cb(c);
 		return this;
 	}
+	/** As Obsidian's: `cb(this)`, then `this`. It makes a Setting a THENABLE:
+	 *  a promise resolved with one (`p.then(() => row.setDesc(…))`) calls
+	 *  it again and again, in microtasks, and Obsidian freezes. Here a run of
+	 *  calls with no timer in between throws instead, so the test fails. */
+	private static thenRun = 0;
+	then(cb: (s: this) => unknown): this {
+		if (Setting.thenRun++ === 0) setTimeout(() => (Setting.thenRun = 0));
+		if (Setting.thenRun > 1000) throw new Error('A Setting was used as a promise value: Setting.then makes Obsidian loop forever');
+		cb(this);
+		return this;
+	}
 	addButton(cb: (b: ButtonComponent) => unknown): this {
 		return this.add(new ButtonComponent(this.controlEl), cb);
 	}

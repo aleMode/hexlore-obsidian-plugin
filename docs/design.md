@@ -319,6 +319,29 @@ palette themes, zip trading, licences in the UI) is additive and can come later.
     pills.
 
 
+### 1.10 Maps at several scales (2026-10-13)
+
+Flutter issue #6 asked for a continent, regions and local maps with a way
+to move between them. Settled with the GM, for now:
+
+- **Separate maps, laid over one another**, not one lattice at several
+  scales: hexes nest exactly only in groups of 3, 7, 19… and turn ~19°
+  against the small grid, so no hex-to-hex correspondence is attempted.
+- **Placed in real distance**: a map's centre in miles and its size from
+  its own scale, with a fit factor for sources drawn off scale (a mismatch
+  is shown, never hidden). No parent/child link: any set of maps can be
+  shown, and each keeps its place.
+- **A command, not a mode of the map view**: the map view draws one map as
+  before; "Show maps together" is a view of its own, locked by default,
+  opacity following each map's on-screen hex size.
+- **GM only, read-only, no notes.** Players keep being served one map.
+- **Plugin only (kind A)**: the layout is in the plugin's `data.json`, not
+  in a map's files or the index, so nothing joins the shared contract.
+  Rejected: storing placements in `campaign.json` or the index (contract,
+  Flutter first, for a view Flutter does not have).
+- Open: notes across maps; a pinch on touch screens (wheel and trackpad
+  pinch work); following Display & overlays changes while open.
+
 ---
 
 ## 2. Step 1: the Flutter side (done)
@@ -355,6 +378,7 @@ stand-in for Obsidian.
 | 2.9 | Importer | Built, except the optional Ollama classifier. |
 | 2.10 | Image exporter (PNG, PDF) | Built. |
 | 2.11 | Polish: Illustrated performance, mobile, publishing | In progress. |
+| 2.12 | Show maps together (software_hexlore #6 / plugin #2, reduced to the plugin) | Built: GM-only, read-only view of several maps in real distance (§1.10). |
 
 ### What is left
 

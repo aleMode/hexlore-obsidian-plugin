@@ -136,15 +136,22 @@ export class MapCanvas {
 	private dpr = 1;
 	last: FrameStats = { mode: 'empty', tilesRendered: 0, background: null, ms: 0 };
 
+	/** Cleared, not filled with the background, from the base to the tiles
+	 *  and the overview: a map laid over another ("Show maps together"). The
+	 *  map view stays opaque, which composites cheaper. */
+	readonly transparent: boolean;
+
 	constructor(
 		private readonly host: HTMLElement,
 		private readonly win: Window,
 		private readonly makeSurface: SurfaceFactory,
+		opts: { transparent?: boolean } = {},
 	) {
+		this.transparent = opts.transparent === true;
 		this.base = host.createEl('canvas', { cls: 'hexlore-map-base' });
 		this.overlay = host.createEl('canvas', { cls: 'hexlore-map-overlay' });
 		// The base is always painted edge to edge: an opaque context composites cheaper.
-		this.base.getContext('2d', { alpha: false });
+		this.base.getContext('2d', { alpha: this.transparent });
 		this.painter = new MapPainter(new TextureCache(makeSurface, (h) => SPEC.parseHex(h)));
 		this.pool = new TilePool(makeSurface);
 		this.watchPixelRatio();
@@ -267,6 +274,16 @@ export class MapCanvas {
 		this.cameraMoved(false);
 	}
 
+	/** Set the camera outright, past the zoom limits (a view driving several
+	 *  maps from one camera of its own: "Show maps together"). */
+	setCamera(c: Camera): void {
+		const zoomed = c.scale !== this.camera.scale;
+		if (!zoomed && c.ox === this.camera.ox && c.oy === this.camera.oy) return;
+		this.camera = { ...c };
+		if (zoomed) this.lastZoomAt = this.win.performance.now();
+		this.cameraMoved(zoomed);
+	}
+
 	/** The scene point at the centre of the view. */
 	centre(): [number, number] {
 		return [(this.width / 2 - this.camera.ox) / this.camera.scale, (this.height / 2 - this.camera.oy) / this.camera.scale];
@@ -332,8 +349,11 @@ export class MapCanvas {
 		const c = this.base.getContext('2d')!;
 		const W = this.base.width, H = this.base.height;
 		c.setTransform(1, 0, 0, 1, 0, 0);
-		c.fillStyle = CANVAS_BG;
-		c.fillRect(0, 0, W, H);
+		if (this.transparent) c.clearRect(0, 0, W, H);
+		else {
+			c.fillStyle = CANVAS_BG;
+			c.fillRect(0, 0, W, H);
+		}
 		const scene = this.scene;
 		if (!scene || !this.width) return (this.last = { mode: 'empty', tilesRendered: 0, background: null, ms: 0 });
 		this.painter.textures.beginFrame(TEXTURES_PER_FRAME);
@@ -382,7 +402,7 @@ export class MapCanvas {
 				this.setPrevious(null); // new content: stale tiles must not show
 				set?.clear();
 			}
-			set = this.tiles = new TileSet(key, cam.scale, scene, this.painter, this.makeSurface, undefined, this.pool);
+			set = this.tiles = new TileSet(key, cam.scale, scene, this.painter, this.makeSurface, undefined, this.pool, this.transparent);
 			edited.clear(); // those were the old set's tiles; this one draws the scene as it is
 			if (fresh && this.overview && !sameKey(this.overview.key, key)) this.dropOverview();
 			if (fresh && !this.previous) {
@@ -622,8 +642,12 @@ export class MapCanvas {
 		c.beginPath();
 		c.rect(0, y0, o.surface.width, y1 - y0);
 		c.clip();
-		c.fillStyle = CANVAS_BG; // a band drawn again starts from nothing
-		c.fillRect(0, y0, o.surface.width, y1 - y0);
+		// A band drawn again starts from nothing.
+		if (this.transparent) c.clearRect(0, y0, o.surface.width, y1 - y0);
+		else {
+			c.fillStyle = CANVAS_BG;
+			c.fillRect(0, y0, o.surface.width, y1 - y0);
+		}
 		c.setTransform(o.k, 0, 0, o.k, -bx * o.k, -by * o.k);
 		this.painter.paint(c, scene, {
 			style: key.style,
