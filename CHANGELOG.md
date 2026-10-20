@@ -35,3 +35,10 @@ entries go under *Unreleased*; a release moves them under its version.
   and the variants of the picked biome or icon sit under the grid, so the
   palette no longer reflows when you pick; it opens on the tab of what is
   picked.
+- Everything is reachable from a menu: a **HexLore** ribbon icon (new map,
+  open map, show maps together, map panel, sections), right-click a map file
+  (open as map / Markdown, player view, export as a campaign folder, maps
+  together) or a note on a hex ("Show on the map"), and a **Sidebars** group
+  in the Map menu. Of the commands only "Create a new map…", "Show this note
+  on the map" and "Open this note as a map" remain, for hotkeys; the others
+  moved into the menus.

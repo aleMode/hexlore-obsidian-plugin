@@ -284,6 +284,8 @@ describe('the top bar (Flutter decision 30)', () => {
 		const titles = menu!.items.map((i) => i.title);
 		expect(titles).toEqual(expect.arrayContaining(['New map…', 'Open map…', 'Map scale…', 'Resize grid…', 'Explode map…', 'Import map image…', 'Export image (PNG / PDF)…', 'Pen and trackpad diagnostics…', 'Benchmark the renderer', 'About and credits…']));
 		expect(titles.indexOf('Benchmark the renderer')).toBe(titles.indexOf('Pen and trackpad diagnostics…') + 1);
+		// The sidebars have a place of their own.
+		expect(titles).toEqual(expect.arrayContaining(['Sidebars', 'Map panel', 'Sections']));
 		for (const t of ['Map scale…', 'Pen and trackpad diagnostics…', 'New map…']) {
 			menu!.choose(t);
 			const m = Modal.open.at(-1)!;
@@ -423,6 +425,40 @@ describe('rivers and roads', () => {
 			expect(lines().has(line.id)).toBe(false);
 			expect(map.mapState().selectedLine).toBeNull();
 		}
+	});
+});
+
+describe('where the plugin can be reached from', () => {
+	const fileMenu = (path: string) => {
+		const menu = new Menu();
+		app.workspace.trigger('file-menu', menu, app.vault.getAbstractFileByPath(path), 'file-explorer');
+		return menu;
+	};
+	const titles = (menu: Menu) => menu.items.map((i) => i.title);
+
+	it('keeps three commands for hotkeys, and the dev map', () => {
+		const ids = (plugin as unknown as { commands: { id: string }[] }).commands.map((c) => c.id);
+		expect(ids).toEqual(['new-map', 'show-note-on-map', 'open-as-map', 'open-synthetic']);
+	});
+
+	it('right-clicking a map file offers what can be done with a map', () => {
+		const t = titles(fileMenu('Campaign/Fixture.hexmap.md'));
+		expect(t).toEqual(expect.arrayContaining(['Open as map', 'Open as Markdown', 'Start the player view', 'Export as a campaign folder…', 'Show maps together…']));
+	});
+
+	it('right-clicking a note on a hex of an open map offers to show it there', () => {
+		expect(titles(fileMenu('Campaign/Places/Base Culto.md'))).toContain('Show on the map');
+		// A note on no hex, and a folder: nothing of ours.
+		expect(titles(fileMenu('Campaign/Adventures/Act One.md'))).not.toContain('Show on the map');
+		expect(titles(fileMenu('Campaign'))).toEqual([]);
+	});
+
+	it('the ribbon icon opens a menu with the entries a vault with no map needs', () => {
+		const icon = (plugin as unknown as { ribbon: { title: string; click: (e: MouseEvent) => void }[] }).ribbon[0]!;
+		expect(icon.title).toBe('HexLore');
+		Menu.last = null;
+		icon.click(new MouseEvent('click'));
+		expect(titles(Menu.last!)).toEqual(expect.arrayContaining(['New map…', 'Open map…', 'Show maps together…', 'Map panel', 'Sections']));
 	});
 });
 

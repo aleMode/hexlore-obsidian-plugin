@@ -79,7 +79,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 | `src/importer/` | Port of Flutter's importer on plain RGBA rasters. |
 | `src/sketch/` | Bucket fill and hexify. |
 | `src/dev/` | The synthetic 100 × 100 map and the renderer benchmark. |
-| `src/main.ts` | The plugin: views, commands, the index → map view switch, rename following. |
+| `src/main.ts` | The plugin: views, the three commands kept for hotkeys, the index → map view switch, rename following. |
+| `src/plugin_menus.ts` | The ribbon icon's menu and the file-menu entries (right-click a map file or a note); everything else is in the Map menu. |
 
 ### Data flow
 
