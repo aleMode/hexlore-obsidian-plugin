@@ -31,3 +31,7 @@ entries go under *Unreleased*; a release moves them under its version.
 ### Changed
 - Renderer: tiles, atlas, redraws limited to what an edit touched
   (`docs/performance.md`).
+- Paint palette: Biomes, Icons and Erase are tabs, one category at a time,
+  and the variants of the picked biome or icon sit under the grid, so the
+  palette no longer reflows when you pick; it opens on the tab of what is
+  picked.

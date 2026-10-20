@@ -433,15 +433,32 @@ describe('the brush palette', () => {
 		swatch.click();
 		const pal = map.containerEl.querySelector<HTMLElement>('.hexlore-palette')!;
 		const titles = () => Array.from(pal.querySelectorAll('.hexlore-palette-title'), (t) => t.textContent);
-		const labels = (n: number) => Array.from(pal.querySelectorAll('.hexlore-palette-grid')[n]!.querySelectorAll('.hexlore-palette-label'), (l) => l.textContent);
-		expect(labels(0)).toEqual(expect.arrayContaining(['Forest', 'Mountain', 'Sea']));
-		expect(labels(1)).toEqual(expect.arrayContaining(['City', 'Ruins', 'Dungeon']));
+		const tabs = () => Array.from(pal.querySelectorAll<HTMLElement>('.hexlore-palette-tab'));
+		const tab = (name: string) => tabs().find((t) => t.textContent === name)!;
+		const labels = () => Array.from(pal.querySelectorAll('.hexlore-palette-grid:not(.is-variants) .hexlore-palette-label'), (l) => l.textContent);
+		// One category at a time, in tabs; it opens on the biomes.
+		expect(tabs().map((t) => t.textContent)).toEqual(['Biomes', 'Icons', 'Erase']);
+		expect(tab('Biomes').hasClass('is-active')).toBe(true);
+		expect(labels()).toEqual(expect.arrayContaining(['Forest', 'Mountain', 'Sea']));
+		expect(labels()).not.toContain('City');
 		expect(pal.querySelectorAll('.hexlore-palette-item canvas.hexlore-pick-preview').length).toBeGreaterThan(10);
 		const pick = (label: string) => Array.from(pal.querySelectorAll<HTMLElement>('.hexlore-palette-item')).find((t) => t.textContent === label)!.click();
+		// A biome's variants sit under its grid, and the tab stays.
+		pick('Forest');
+		expect(titles()).toEqual(['Forest variants']);
+		expect(tab('Biomes').hasClass('is-active')).toBe(true);
+		tab('Icons').click();
+		expect(labels()).toEqual(expect.arrayContaining(['City', 'Ruins', 'Dungeon']));
+		expect(labels()).not.toContain('Forest');
 		pick('City');
-		expect(titles()).toContain('City variants');
-		expect(titles().at(-1)).toBe('Erase'); // its own section, last
+		expect(titles()).toEqual(['City variants']);
+		tab('Erase').click();
+		expect(labels()).toEqual(['Biome', 'Icon']); // erasing is a tab of its own
 		pick('Icon');
+		// Reopened, it comes back to what is picked: the icon eraser.
+		swatch.click();
+		swatch.click();
+		expect(map.containerEl.querySelector('.hexlore-palette-tab.is-active')!.textContent).toBe('Erase');
 		expect(map.mapState().editor && (map as unknown as { pick: { clearsFeature: boolean } }).pick.clearsFeature).toBe(true);
 		swatch.click();
 	});
