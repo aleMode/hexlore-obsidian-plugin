@@ -15,8 +15,8 @@ community directory yet.
 
 Copy `main.js`, `manifest.json` and `styles.css` from a release into
 `<vault>/.obsidian/plugins/hexlore/`, then enable **HexLore** under
-*Settings → Community plugins*. Start with the command **HexLore: Create a
-new map…**.
+*Settings → Community plugins*. Start with the **HexLore** icon in the left
+ribbon → **New map…**.
 
 ## Documentation
 

@@ -220,8 +220,12 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
   map; the selection, regions, sketch tools, travel votes — no display
   choices). `main.ts` switches a Markdown leaf on an index to the map view
-  ("Open as Markdown" to go back) and holds the commands ("Create a new
-  map…" is the way into a vault with no map yet).
+  ("Open as Markdown" to go back). ONE PLACE PER ACTION holds outside a map
+  too: `plugin_menus.ts` is the ribbon icon's menu (the way into a vault
+  with no map yet) and the file menu (right-click a map file or a note); the
+  commands are only "Create a new map…", "Show this note on the map",
+  "Open this note as a map" (hotkeys) and the dev synthetic map. A new
+  action goes in a menu first, never only in the palette.
 - Input (as Flutter's canvas): left-drag = the tool (select: rubber band);
   middle-drag / Space+drag / trackpad scroll pan; wheel and pinch zoom;
   right-click = cell menu. Raw pointer events only. Wheel vs trackpad is

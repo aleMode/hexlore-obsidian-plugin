@@ -273,6 +273,8 @@ export class MapView extends ItemView {
 			mapFolders: () => boolean;
 			/** "Show maps together…": pick the maps, then show them. */
 			mapsTogether: () => void;
+			/** The Sections list in the left sidebar. */
+			showSections: () => void;
 		},
 	) {
 		super(leaf);
@@ -798,6 +800,10 @@ export class MapView extends ItemView {
 				.setDisabled(!this.file || !Platform.isDesktopApp)
 				.onClick(() => this.file && void this.panel.exportFlutter(this.file)),
 		);
+		menu.addSeparator();
+		label('Sidebars');
+		menu.addItem((i) => i.setTitle('Map panel').setIcon('panel-right').onClick(() => void this.panel.toggle()));
+		menu.addItem((i) => i.setTitle('Sections').setIcon('list-tree').onClick(() => this.panel.showSections()));
 		menu.addSeparator();
 		label('HexLore');
 		menu.addItem((i) => i.setTitle('Pen and trackpad diagnostics…').setIcon('pen-tool').onClick(() => new StylusProbeModal(this.app).open()));

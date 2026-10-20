@@ -19,8 +19,8 @@ The **BRAT** plugin can install and update it from its repository instead.
 
 ## Your first map
 
-Run the command **HexLore: Create a new map…** (Ctrl+P), and give it a name,
-a folder and a size. The map gets a folder of its own:
+Click the **HexLore** icon in the left ribbon and choose **New map…** (or, in
+a map, **Map menu → New map…**), and give it a name, a folder and a size. The map gets a folder of its own:
 
 ```
 Name/
@@ -103,8 +103,9 @@ icon, and a list of **notes**.
   *Remove*.
 - A note can be linked to several hexes. The label is never taken from a
   note's title, so a note called "Cult base (secret)" never reaches players.
-- **Show this note on the map** (command) centres the map on the hexes of the
-  note you are reading; they are highlighted in gold.
+- **Show on the map** (right-click the note, when it is on a hex of an open
+  map) centres the map on the hexes of the note; they are highlighted in
+  gold. The same is the command **Show this note on the map**, for a hotkey.
 
 ### NPCs, quests and places
 
@@ -144,8 +145,8 @@ choices are per device; overlay choices are per map.
 
 For maps of the same world at different scales (a continent in 50-mile
 hexes, a forest in 5-mile hexes, a city's surroundings in 1-mile hexes),
-**Show maps together…** (command palette, or **Map menu → Show maps
-together…**) lays them over one another at their real sizes. It is for you
+**Show maps together…** (the ribbon icon, **Map menu → Show maps
+together…**, or right-click a map file) lays them over one another at their real sizes. It is for you
 only: players never see it, and it changes no map.
 
 1. Tick the maps to show; each one is listed with its scale. **Show** opens
@@ -169,8 +170,8 @@ vault; the zoom is per device. Renaming or moving a map keeps its place.
 
 ## The player view (desktop only)
 
-1. Click the **players** button (or the command **Start the player view for
-   this map**). A window shows the link, by default `http://127.0.0.1:5174`.
+1. Click the **players** button (or right-click the map file → **Start the
+   player view**). A window shows the link, by default `http://127.0.0.1:5174`.
 2. To let players open it on their phones, turn on **Serve on the local
    network** in the players menu. On Windows, allow Obsidian through the
    firewall on private networks when asked.

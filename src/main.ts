@@ -1,5 +1,6 @@
 import { MarkdownView, Notice, Plugin, TFile, TFolder, type TAbstractFile, type WorkspaceLeaf } from 'obsidian';
 import { exportToFlutter } from './convert/export_command';
+import { fileMenu, ribbonMenu, type MenuActions } from './plugin_menus';
 import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
@@ -7,7 +8,7 @@ import { StoreRegistry } from './storage/store_registry';
 import { renamePaths, type AtlasLayout } from './view/atlas_layout';
 import { ATLAS_VIEW, AtlasPickerModal, AtlasView } from './view/atlas_view';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
-import { NewMapModal, newMapFolder } from './view/map_menus';
+import { MapPicker, NewMapModal, newMapFolder } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
 
@@ -42,6 +43,7 @@ export default class HexLorePlugin extends Plugin {
 				templatesFolder: () => this.settings.templatesFolder,
 				mapFolders: () => this.settings.mapFolders,
 				mapsTogether: () => this.pickMapsTogether(),
+				showSections: () => void this.showSections(true),
 			}));
 		this.registerView(ATLAS_VIEW, (leaf) => new AtlasView(leaf, {
 				layout: () => this.atlasLayout(),
@@ -54,89 +56,12 @@ export default class HexLorePlugin extends Plugin {
 		// Ctrl-hover on a hex previews its principal note (Page preview).
 		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Hex maps', defaultMod: true });
 
-		// The map menu has "New map…" too, but a vault with no map needs a way in.
+		// Everything is in a menu: the ribbon icon, the Map menu, and right-clicking
+		// a map file or a note (`plugin_menus.ts`). Three commands stay, for hotkeys.
 		this.addCommand({
 			id: 'new-map',
 			name: 'Create a new map…',
-			callback: () => {
-				const own = this.settings.mapFolders;
-				const folder = newMapFolder(this.app.workspace.getActiveFile(), own);
-				new NewMapModal(this.app, folder, own, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
-			},
-		});
-		this.addCommand({
-			id: 'show-maps-together',
-			name: 'Show maps together…',
-			callback: () => this.pickMapsTogether(),
-		});
-		this.addCommand({
-			id: 'show-panel',
-			name: 'Show the side panel',
-			callback: () => void this.showPanel(true),
-		});
-		this.addCommand({
-			id: 'show-sections',
-			name: 'Show the map sections',
-			callback: () => void this.showSections(true),
-		});
-		this.addCommand({
-			id: 'start-player-view',
-			name: 'Start the player view for this map',
-			checkCallback: (checking) => {
-				const file = this.activeMapFile();
-				if (!file) return false;
-				if (!checking) void this.players.start(file);
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'stop-player-view',
-			name: 'Stop the player view',
-			checkCallback: (checking) => {
-				if (!this.players.running) return false;
-				if (!checking) void this.players.stop();
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'copy-player-link',
-			name: 'Copy the player view link',
-			checkCallback: (checking) => {
-				const url = this.players.url;
-				if (!url) return false;
-				if (!checking) void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`));
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'import-map-image',
-			name: 'Import a map image into this map…',
-			checkCallback: (checking) => {
-				const view = this.app.workspace.getActiveViewOfType(MapView);
-				if (!view) return false;
-				if (!checking) view.importImage();
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'export-image',
-			name: 'Export the map as an image or PDF…',
-			checkCallback: (checking) => {
-				const view = this.app.workspace.getActiveViewOfType(MapView);
-				if (!view) return false;
-				if (!checking) view.exportImage();
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'export-to-flutter',
-			name: 'Export this map as a campaign folder…',
-			checkCallback: (checking) => {
-				const file = this.activeMapFile();
-				if (!file) return false;
-				if (!checking) void exportToFlutter(this.app, this.stores, file);
-				return true;
-			},
+			callback: () => this.newMap(),
 		});
 		this.addCommand({
 			id: 'show-note-on-map',
@@ -148,6 +73,12 @@ export default class HexLorePlugin extends Plugin {
 				return true;
 			},
 		});
+		this.addRibbonIcon('hexagon', 'HexLore', (evt) => ribbonMenu(this.menuActions()).showAtMouseEvent(evt));
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file) => {
+				if (file instanceof TFile) fileMenu(menu, file, this.menuActions());
+			}),
+		);
 
 		// Renaming the data folder, or the index, must not cut the link between
 		// them: `data:` is a plain relative path Obsidian does not update.
@@ -191,12 +122,36 @@ export default class HexLorePlugin extends Plugin {
 		});
 	}
 
-	/** The map of the active view (a map view, or its index open as Markdown). */
-	private activeMapFile(): TFile | null {
-		const view = this.app.workspace.getActiveViewOfType(MapView);
-		if (view) return view.mapState().file;
-		const file = this.app.workspace.getActiveFile();
-		return isMapIndex(this.app, file) ? file : null;
+	private newMap(): void {
+		const own = this.settings.mapFolders;
+		const folder = newMapFolder(this.app.workspace.getActiveFile(), own);
+		new NewMapModal(this.app, folder, own, (f) => void this.app.workspace.getLeaf('tab').openFile(f)).open();
+	}
+
+	/** What the ribbon and file menus ask of the plugin. */
+	private menuActions(): MenuActions {
+		const ws = this.app.workspace;
+		const mapViews = () => ws.getLeavesOfType(MAP_VIEW).flatMap((l) => (l.view instanceof MapView ? [l.view] : []));
+		return {
+			isMap: (f) => isMapIndex(this.app, f),
+			openMap: (f) => void this.openMap(f, ws.getLeaf('tab')),
+			openMarkdown: (f) => this.openMarkdown(f, ws.getLeaf('tab')),
+			newMap: () => this.newMap(),
+			pickMap: () => new MapPicker(this.app, (f) => isMapIndex(this.app, f), (f) => void ws.getLeaf('tab').openFile(f)).open(),
+			mapsTogether: () => this.pickMapsTogether(),
+			showPanel: () => void this.showPanel(true),
+			showSections: () => void this.showSections(true),
+			serves: (f) => this.players.serves(f),
+			startPlayers: (f) => void this.players.start(f),
+			stopPlayers: () => void this.players.stop(),
+			copyPlayerLink: () => {
+				const url = this.players.url;
+				if (url) void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`));
+			},
+			exportCampaign: (f) => void exportToFlutter(this.app, this.stores, f),
+			isOnOpenMap: (f) => mapViews().some((v) => v.hexesOf(f).size > 0),
+			showOnMap: (f) => this.showNoteOnMap(f),
+		};
 	}
 
 	onunload() {

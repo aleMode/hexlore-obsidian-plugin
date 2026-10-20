@@ -495,8 +495,16 @@ export class Plugin extends Component {
 	registerView(type: string, factory: (leaf: WorkspaceLeaf) => View): void {
 		this.app.workspace.factories.set(type, factory);
 	}
-	addCommand(c: unknown): unknown {
+	/** What the plugin registered, for the tests that check what is reachable. */
+	commands: { id: string; name: string }[] = [];
+	ribbon: { icon: string; title: string; click: (e: MouseEvent) => void }[] = [];
+	addCommand(c: { id: string; name: string }): unknown {
+		this.commands.push(c);
 		return c;
+	}
+	addRibbonIcon(icon: string, title: string, click: (e: MouseEvent) => void): HTMLElement {
+		this.ribbon.push({ icon, title, click });
+		return document.createElement('div');
 	}
 	addSettingTab(): void {}
 	addStatusBarItem(): HTMLElement {
