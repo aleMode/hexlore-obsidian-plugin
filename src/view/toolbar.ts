@@ -35,6 +35,14 @@ export const TOOLS: ToolInfo[] = [
 
 export const MAX_BRUSH = 6;
 
+/** The palette shows one category at a time. */
+type PaletteTab = 'biomes' | 'icons' | 'erase';
+const PALETTE_TABS: [PaletteTab, string][] = [
+	['biomes', 'Biomes'],
+	['icons', 'Icons'],
+	['erase', 'Erase'],
+];
+
 export const ROUTE_KINDS: { kind: string; icon: string; label: string }[] = [
 	{ kind: 'highway', icon: 'milestone', label: 'Highway' },
 	{ kind: 'road', icon: 'route', label: 'Road' },
@@ -101,6 +109,7 @@ export class Toolbar {
 	private readonly routeButtons = new Map<string, HTMLElement>();
 	private readonly routeColor: HTMLInputElement;
 	private palette: HTMLElement | null = null;
+	private tab: PaletteTab = 'biomes';
 
 	constructor(
 		parent: HTMLElement,
@@ -196,6 +205,9 @@ export class Toolbar {
 		}
 		this.palette = this.el.createDiv({ cls: 'hexlore-palette' });
 		this.palette.addEventListener('pointerdown', (e) => e.stopPropagation());
+		// It opens on the tab of what is picked.
+		const p = this.host.pick();
+		this.tab = p.feature ? 'icons' : p.terrain === 'default' || p.clearsFeature ? 'erase' : 'biomes';
 		this.renderPalette();
 	}
 
@@ -208,10 +220,16 @@ export class Toolbar {
 			this.host.setPick(p);
 			this.renderPalette();
 		};
-		const section = (title: string) => {
-			pal.createDiv({ cls: 'hexlore-palette-title', text: title });
-			return pal.createDiv({ cls: 'hexlore-palette-grid' });
-		};
+		const tabs = pal.createDiv({ cls: 'hexlore-palette-tabs', attr: { role: 'tablist' } });
+		for (const [id, label] of PALETTE_TABS) {
+			const t = tabs.createDiv({ cls: 'hexlore-palette-tab', text: label, attr: { role: 'tab' } });
+			t.toggleClass('is-active', id === this.tab);
+			t.addEventListener('click', () => {
+				this.tab = id;
+				this.renderPalette();
+			});
+		}
+		const grid = pal.createDiv({ cls: 'hexlore-palette-grid' });
 		/** A named tile: a preview (or an icon) over its label. */
 		const tile = (grid: HTMLElement, label: string, active: boolean, pick: () => PaintPick, preview: PreviewOf | string) => {
 			const t = grid.createDiv({ cls: 'hexlore-palette-item' });
@@ -219,35 +237,35 @@ export class Toolbar {
 			if (typeof preview === 'string') setIcon(t.createDiv({ cls: 'hexlore-palette-icon' }), preview);
 			else pickPreview(t, preview, 36);
 			t.createDiv({ cls: 'hexlore-palette-label', text: label });
-			setTooltip(t, label);
+			setTooltip(t, label, { placement: 'top' });
 			t.addEventListener('click', () => choose(pick()));
 		};
 
-		const biomes = section('Biomes');
-		for (const b of ART.allBiomes()) {
-			if (b.terrain === 'default') continue;
-			tile(biomes, titleCase(b.terrain), current.terrain === b.terrain && !current.feature, () => PaintPick.biome(b.terrain), { terrain: b.terrain });
-		}
-		const features = section('Icons');
-		for (const f of ART.allFeatures()) {
-			tile(features, titleCase(f.feature), current.feature === f.feature, () => PaintPick.featureOnly(f.feature), { feature: f.feature });
+		const { feature, terrain } = current;
+		if (this.tab === 'biomes') {
+			for (const b of ART.allBiomes()) {
+				if (b.terrain === 'default') continue;
+				tile(grid, titleCase(b.terrain), terrain === b.terrain && !feature, () => PaintPick.biome(b.terrain), { terrain: b.terrain });
+			}
+		} else if (this.tab === 'icons') {
+			for (const f of ART.allFeatures()) {
+				tile(grid, titleCase(f.feature), feature === f.feature, () => PaintPick.featureOnly(f.feature), { feature: f.feature });
+			}
+		} else {
+			grid.addClass('is-erase');
+			tile(grid, 'Biome', terrain === 'default', () => PaintPick.biome('default'), 'eraser');
+			tile(grid, 'Icon', current.clearsFeature && !feature, () => PaintPick.featureEraser(), 'eraser');
 		}
 
-		// The variants of what is picked, each drawn.
-		const { feature, terrain } = current;
+		// The variants of what is picked, each drawn, under the grid whatever the tab.
 		const art = feature ? ART.feature(feature) : terrain && terrain !== 'default' ? ART.biome(terrain) : undefined;
 		if (art && art.variants.length > 1) {
-			const grid = section(`${titleCase(feature ?? terrain!)} variants`);
+			pal.createDiv({ cls: 'hexlore-palette-title', text: `${titleCase(feature ?? terrain!)} variants` });
+			const vgrid = pal.createDiv({ cls: 'hexlore-palette-grid is-variants' });
 			art.variants.forEach((v, i) => {
-				if (feature) tile(grid, v.label, current.featureVariant === i, () => PaintPick.featureOnly(feature, i), { feature, featureVariant: i });
-				else tile(grid, v.label, current.terrainVariant === i, () => PaintPick.biome(terrain!, i), { terrain, terrainVariant: i });
+				if (feature) tile(vgrid, v.label, current.featureVariant === i, () => PaintPick.featureOnly(feature, i), { feature, featureVariant: i });
+				else tile(vgrid, v.label, current.terrainVariant === i, () => PaintPick.biome(terrain!, i), { terrain, terrainVariant: i });
 			});
 		}
-
-		pal.createDiv({ cls: 'hexlore-palette-divider' });
-		const erase = section('Erase');
-		erase.addClass('is-erase');
-		tile(erase, 'Biome', terrain === 'default', () => PaintPick.biome('default'), 'eraser');
-		tile(erase, 'Icon', current.clearsFeature && !feature, () => PaintPick.featureEraser(), 'eraser');
 	}
 }

@@ -200,7 +200,7 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   6), selection, context menu, keys (view `Scope`); `toolbar.ts` is the
   tool strip + paint palette (derived from the art registry: named tiles
   with previews drawn by the renderer's own `paintBiomeStamp` / `paintGlyph`
-  via `pick_preview.ts`; erasers in a section of their own); a river's
+  via `pick_preview.ts`; one category at a time in tabs, Biomes | Icons | Erase, the picked art's variants under the grid); a river's
   width is in its right-click menu (presets + exact), not the sidebar; `top_bar.ts`
   mirrors Flutter's title bar (decision 30: left = fullscreen, the map menu,
   quick jump Ctrl+K, adventures, session notes; centre = Hex | Sketch;

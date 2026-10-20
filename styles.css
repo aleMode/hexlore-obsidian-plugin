@@ -167,10 +167,33 @@
 	text-transform: uppercase;
 }
 
-.hexlore-palette-divider {
-	height: var(--border-width);
-	margin: var(--size-4-3) 0 var(--size-2-2);
-	background: var(--background-modifier-border);
+/* One category at a time: Biomes | Icons | Erase. */
+.hexlore-palette-tabs {
+	display: flex;
+	gap: var(--size-2-2);
+	margin-bottom: var(--size-4-2);
+	padding-bottom: var(--size-2-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.hexlore-palette-tab {
+	flex: 1;
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	text-align: center;
+	cursor: var(--cursor);
+}
+
+.hexlore-palette-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.hexlore-palette-tab.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
 }
 
 .hexlore-palette-grid {
