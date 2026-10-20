@@ -5,6 +5,7 @@
 // unit tests of the pure modules cannot — on the converter fixture's vault.
 
 import './mocks/dom';
+import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 // The mock itself (the same module the plugin gets as 'obsidian'), for its
 // test helpers.
@@ -463,6 +464,24 @@ describe('where the plugin can be reached from', () => {
 });
 
 describe('the brush palette', () => {
+	it('its previews take their place in the layout, not the map canvases\' (absolute) one', () => {
+		// The stage's rule for the map's own canvases once caught them: the swatch
+		// sat on the Select tool and every tile preview piled up in the corner.
+		const swatch = map.containerEl.querySelector<HTMLElement>('.hexlore-pick-swatch')!;
+		map.setTool('paint');
+		swatch.click();
+		const previews = Array.from(map.containerEl.querySelectorAll<HTMLElement>('canvas.hexlore-pick-preview'));
+		expect(previews.length).toBeGreaterThan(10);
+		const mapCanvas = map.containerEl.querySelector('.hexlore-map-stage > canvas')!;
+		const absolute = Array.from(readFileSync('styles.css', 'utf8').matchAll(/([^{}]+)\{([^{}]*)\}/g))
+			.filter((m) => /position:\s*absolute/.test(m[2]!))
+			.flatMap((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((sel) => sel.trim()));
+		const matching = (el: Element) => absolute.filter((sel) => { try { return el.matches(sel); } catch { return false; } });
+		for (const c of previews) expect(matching(c)).toEqual([]);
+		expect(matching(mapCanvas).length).toBeGreaterThan(0); // the map's own canvases keep theirs
+		swatch.click();
+	});
+
 	it('names every biome and icon, draws variants, and keeps erasing apart', () => {
 		const swatch = map.containerEl.querySelector<HTMLElement>('.hexlore-pick-swatch')!;
 		map.setTool('paint');
@@ -484,11 +503,20 @@ describe('the brush palette', () => {
 		expect(titles()).toEqual(['Forest variants']);
 		expect(tab('Biomes').hasClass('is-active')).toBe(true);
 		tab('Icons').click();
+		expect(titles()).toEqual([]); // the variants belong to the tab of what is picked
+		tab('Biomes').click();
+		expect(titles()).toEqual(['Forest variants']);
+		tab('Icons').click();
 		expect(labels()).toEqual(expect.arrayContaining(['City', 'Ruins', 'Dungeon']));
 		expect(labels()).not.toContain('Forest');
 		pick('City');
 		expect(titles()).toEqual(['City variants']);
+		tab('Biomes').click();
+		expect(titles()).toEqual([]); // the pick is now an icon: no biome variants
+		tab('Icons').click();
+		expect(titles()).toEqual(['City variants']);
 		tab('Erase').click();
+		expect(titles()).toEqual([]);
 		expect(labels()).toEqual(['Biome', 'Icon']); // erasing is a tab of its own
 		pick('Icon');
 		// Reopened, it comes back to what is picked: the icon eraser.

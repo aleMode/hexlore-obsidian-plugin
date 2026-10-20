@@ -28,7 +28,8 @@
 	cursor: grabbing !important;
 }
 
-.hexlore-map-stage canvas {
+/* The map's own canvases; the toolbar's previews (inside the stage) are not. */
+.hexlore-map-stage canvas:not(.hexlore-pick-preview) {
 	position: absolute;
 	inset: 0;
 	width: 100%;
@@ -265,6 +266,13 @@
 
 .hexlore-pick-preview {
 	display: block;
+}
+
+/* What is being painted: a hex filling the bar, above the brush size. */
+.hexlore-pick-swatch {
+	justify-content: center;
+	padding: 0;
+	height: auto;
 }
 
 .hexlore-map-stage:focus {
