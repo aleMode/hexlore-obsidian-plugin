@@ -35,6 +35,9 @@ export const TOOLS: ToolInfo[] = [
 
 export const MAX_BRUSH = 6;
 
+/** The swatch's hex, in px: it sets the width of the whole strip. */
+const SWATCH_PX = 40;
+
 /** The palette shows one category at a time. */
 type PaletteTab = 'biomes' | 'icons' | 'erase';
 const PALETTE_TABS: [PaletteTab, string][] = [
@@ -188,8 +191,11 @@ export class Toolbar {
 	private renderSwatch(): void {
 		const p = this.host.pick();
 		this.swatch.empty();
-		if (p.terrain === 'default' || (p.clearsFeature && !p.feature && !p.terrain)) setIcon(this.swatch.createDiv({ cls: 'hexlore-chip is-empty' }), 'eraser');
-		else pickPreview(this.swatch, p, 26);
+		if (p.terrain === 'default' || (p.clearsFeature && !p.feature && !p.terrain)) {
+			const chip = this.swatch.createDiv({ cls: 'hexlore-chip is-empty' });
+			chip.style.width = chip.style.height = `${SWATCH_PX}px`;
+			setIcon(chip, 'eraser');
+		} else pickPreview(this.swatch, p, SWATCH_PX);
 		setTooltip(this.swatch, `Painting: ${p.describe()}`, { placement: 'right' });
 	}
 
@@ -257,8 +263,8 @@ export class Toolbar {
 			tile(grid, 'Icon', current.clearsFeature && !feature, () => PaintPick.featureEraser(), 'eraser');
 		}
 
-		// The variants of what is picked, each drawn, under the grid whatever the tab.
-		const art = feature ? ART.feature(feature) : terrain && terrain !== 'default' ? ART.biome(terrain) : undefined;
+		// The variants of what is picked, each drawn, under the grid of its own tab only.
+		const art = feature ? (this.tab === 'icons' ? ART.feature(feature) : undefined) : terrain && terrain !== 'default' && this.tab === 'biomes' ? ART.biome(terrain) : undefined;
 		if (art && art.variants.length > 1) {
 			pal.createDiv({ cls: 'hexlore-palette-title', text: `${titleCase(feature ?? terrain!)} variants` });
 			const vgrid = pal.createDiv({ cls: 'hexlore-palette-grid is-variants' });

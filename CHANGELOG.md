@@ -32,8 +32,8 @@ entries go under *Unreleased*; a release moves them under its version.
 - Renderer: tiles, atlas, redraws limited to what an edit touched
   (`docs/performance.md`).
 - Paint palette: Biomes, Icons and Erase are tabs, one category at a time,
-  and the variants of the picked biome or icon sit under the grid, so the
-  palette no longer reflows when you pick; it opens on the tab of what is
+  and the variants of the picked biome or icon sit under the grid of its own
+  tab, so the palette no longer reflows when you pick; it opens on the tab of what is
   picked.
 - Everything is reachable from a menu: a **HexLore** ribbon icon (new map,
   open map, show maps together, map panel, sections), right-click a map file
@@ -42,3 +42,9 @@ entries go under *Unreleased*; a release moves them under its version.
   in the Map menu. Of the commands only "Create a new map…", "Show this note
   on the map" and "Open this note as a map" remain, for hotkeys; the others
   moved into the menus.
+
+### Fixed
+- Paint palette: the preview hexes were pinned to the corner of the strip and
+  of the palette, one on top of the other: the strip's swatch hid the Select
+  tool and the palette's tiles showed no preview. Each now sits in its place,
+  and the swatch is a larger hex that fills the strip.

@@ -71,7 +71,7 @@ trackpad scroll. Zoom with the **wheel** or a pinch.
 | Key | Tool | How it works |
 |---|---|---|
 | 1 | **Select** | Click a hex; Ctrl+click adds or removes; drag a box for many. Drag a selection to move it. Right-click for the hex menu. |
-| 2 | **Paint** | Pick a biome or a feature icon from the palette (tabs: **Biomes**, **Icons**, **Erase**; the variants of what is picked sit under the grid) and paint, with a brush radius. |
+| 2 | **Paint** | Pick a biome or a feature icon from the palette (tabs: **Biomes**, **Icons**, **Erase**; the variants of what is picked sit under the grid of its own tab) and paint, with a brush radius. |
 | 3 | **River** | Click hex corners in order. **Enter** saves, **Backspace** removes the last point. |
 | 4 | **Thread** | Click a hex, then another: a plot thread only you can see. |
 | 5 | **Region** | Drag to paint hexes into the active region; Ctrl+drag removes. |
