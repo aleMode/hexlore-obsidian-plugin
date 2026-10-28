@@ -3,7 +3,7 @@
 // whichever map view was last active. What the map SHOWS is not here: that
 // is the top bar's Display & overlays panel (display_panel.ts), and only there.
 
-import { FuzzySuggestModal, ItemView, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type DropdownComponent, type Events, type WorkspaceLeaf } from 'obsidian';
+import { FuzzySuggestModal, ItemView, type HoverPopover, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type DropdownComponent, type Events, type WorkspaceLeaf } from 'obsidian';
 import { displayIdFor } from '../core/hex';
 import { hexIdFor } from '../core/hex_data';
 import { parseEncounters, rollEncounter } from '../core/region_encounters';
@@ -15,6 +15,7 @@ import { TERRAINS, type Terrain } from '../core/hex_data';
 import { toPlain, type JsonObject } from '../core/json';
 import { sectionsOf, updateRegionLinks } from '../storage/index_file';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
+import { openNote } from './open_note';
 import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
 import type { HexLoreSettings } from '../settings';
 import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
@@ -38,6 +39,8 @@ function cloneSwatch(s: Swatch): Swatch {
 export const KIND_ICON: Record<NoteKind, string> = { note: 'file-text', place: 'map-pin', npc: 'user', quest: 'scroll' };
 
 export class InspectorView extends ItemView {
+	/** Page preview's window (Obsidian sets it). */
+	hoverPopover: HoverPopover | null = null;
 	private map: MapView | null = null;
 	private lastRoll: { region: string; text: string } | null = null;
 	/** A render waited for a field to lose focus. */
@@ -491,39 +494,37 @@ export class InspectorView extends ItemView {
 		const a = parent.createEl('a', { text: file.basename, cls: 'internal-link' });
 		a.addEventListener('click', (e) => {
 			e.preventDefault();
-			void this.app.workspace.getLeaf(e.ctrlKey || e.metaKey ? 'tab' : 'split').openFile(file);
+			this.openFromPanel(file.path, '', a, e);
 		});
 		a.addEventListener('mouseover', (e) =>
 			this.app.workspace.trigger('hover-link', { event: e, source: HOVER_SOURCE, hoverParent: this, targetEl: a, linktext: file.path, sourcePath: '' }),
 		);
 	}
 
-	/** "New note here": a title (prefilled with the hex's label), a section,
-	 *  a kind and a template; the note is created there, linked, and opened
-	 *  beside the map. An NPC or a quest made here gets the hex's principal
-	 *  note as its place. */
+	/** "New note…" for the selected hex, opened as the map opens notes. */
 	private newHexNote(cell: Cell, label: string, editor: MapEditor): void {
 		const index = this.indexFile();
-		if (!index) return;
-		const id = hexIdFor(...cell);
-		const principal = editor.hexNotes(id)[0];
-		const place = principal ? resolveLink(this.app, principal, index.path) : null;
-		new NewNoteModal(this.app, {
+		const map = this.map;
+		if (!index || !map) return;
+		newHexNote(this.app, {
 			heading: 'New note for this hex',
-			title: label,
-			sections: sectionsOf(this.app, index) ?? [...DEFAULT_SECTIONS],
-			section: 'Places',
-			templates: templateFiles(this.app, this.settings().templatesFolder),
-			accept: async (choice) => {
-				const file = await createNote(this.app, {
-					...choice,
-					vars: { title: choice.title, hex: displayIdFor(...cell), map: index.basename.replace(/\.hexmap$/, '') },
-					location: place && (choice.kind === 'npc' || choice.kind === 'quest') ? this.app.metadataCache.fileToLinktext(place, '', true) : null,
-				});
-				editor.setHexNotes(id, [...editor.hexNotes(id), this.app.metadataCache.fileToLinktext(file, index.path, true)], `New note “${file.basename}”`);
-				await this.app.workspace.getLeaf('split').openFile(file);
-			},
-		}).open();
+			index,
+			cell,
+			label,
+			editor,
+			templatesFolder: this.settings().templatesFolder,
+			opened: (file) => map.openNoteAt(file.path, '', map.screenPointOf(cell)),
+		});
+	}
+
+	/** Open a note from the panel: as the map opens notes, the floating
+	 *  window beside the link; Ctrl/Cmd: a new tab. */
+	private openFromPanel(linktext: string, sourcePath: string, a: HTMLElement, e: MouseEvent): void {
+		if (e.ctrlKey || e.metaKey) {
+			void this.app.workspace.openLinkText(linktext, sourcePath, 'tab');
+			return;
+		}
+		openNote(this.app, this.settings().noteOpening, linktext, sourcePath, { parent: this, el: a, x: e.clientX, y: e.clientY });
 	}
 
 	private noteLink(parent: HTMLElement, link: string, principal: boolean): void {
@@ -533,7 +534,7 @@ export class InspectorView extends ItemView {
 		if (!this.app.metadataCache.getFirstLinkpathDest(path.split('#')[0]!, source)) a.addClass('is-unresolved');
 		a.addEventListener('click', (e) => {
 			e.preventDefault();
-			void this.app.workspace.openLinkText(path, source, e.ctrlKey || e.metaKey ? 'tab' : 'split');
+			this.openFromPanel(path, source, a, e);
 		});
 		a.addEventListener('mouseover', (e) =>
 			this.app.workspace.trigger('hover-link', { event: e, source: HOVER_SOURCE, hoverParent: this, targetEl: a, linktext: path, sourcePath: source }),
@@ -897,6 +898,36 @@ class ConfirmModal extends Modal {
 	onClose(): void {
 		this.contentEl.empty();
 	}
+}
+
+/** "New note" for a hex: a title (prefilled with the hex's label), a
+ *  section, a kind and a template; the note is created there and linked to
+ *  the hex, then handed to [opened]. An NPC or a quest made here gets the
+ *  hex's principal note as its place. */
+export function newHexNote(
+	app: App,
+	o: { heading: string; index: TFile; cell: Cell; label: string; editor: MapEditor; templatesFolder: string; opened: (file: TFile) => void },
+): void {
+	const { index, cell, editor } = o;
+	const id = hexIdFor(...cell);
+	const principal = editor.hexNotes(id)[0];
+	const place = principal ? resolveLink(app, principal, index.path) : null;
+	new NewNoteModal(app, {
+		heading: o.heading,
+		title: o.label,
+		sections: sectionsOf(app, index) ?? [...DEFAULT_SECTIONS],
+		section: 'Places',
+		templates: templateFiles(app, o.templatesFolder),
+		accept: async (choice) => {
+			const file = await createNote(app, {
+				...choice,
+				vars: { title: choice.title, hex: displayIdFor(...cell), map: index.basename.replace(/\.hexmap$/, '') },
+				location: place && (choice.kind === 'npc' || choice.kind === 'quest') ? app.metadataCache.fileToLinktext(place, '', true) : null,
+			});
+			editor.setHexNotes(id, [...editor.hexNotes(id), app.metadataCache.fileToLinktext(file, index.path, true)], `New note “${file.basename}”`);
+			o.opened(file);
+		},
+	}).open();
 }
 
 export interface NewNoteChoice {
