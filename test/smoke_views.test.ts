@@ -6,7 +6,7 @@
 
 import './mocks/dom';
 import { readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 // The mock itself (the same module the plugin gets as 'obsidian'), for its
 // test helpers.
 import { App, Menu, Modal, Notice, Setting, TFile, useApp, type ToggleComponent, type WorkspaceLeaf } from './mocks/obsidian';
@@ -20,6 +20,8 @@ import { readTree } from './helpers/vault_folder';
 import { paintMap, stampIcon } from './helpers/importer_synth';
 import { SourceGrid } from '../src/importer/grid_calibration';
 import { ImportSession } from '../src/importer/import_session';
+import { hexIdFor } from '../src/core/hex_data';
+import { displayIdFor } from '../src/core/hex';
 
 const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 
@@ -154,6 +156,113 @@ describe('notes from the panel', () => {
 		await tick(20);
 		expect(map.mapState().editor!.hexNotes('q5_r5').length).toBe(1);
 		expect(app.vault.getMarkdownFiles().some((f) => f.path === 'Campaign/Places/F6.md')).toBe(true);
+	});
+
+	it('a click on a panel note opens it in the floating window, editing; Ctrl-click in a new tab', async () => {
+		const panel = app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0]!.view as unknown as InspectorView;
+		(map as unknown as { setSelection(c: string[]): void }).setSelection(['0,0']);
+		await tick(20);
+		const hovers: Record<string, unknown>[] = [];
+		const ref = app.workspace.on('hover-link', (e) => hovers.push(e as Record<string, unknown>));
+		const opened: string[] = [];
+		const spy = vi.spyOn(app.workspace, 'openLinkText').mockImplementation((...a: unknown[]) => (opened.push(String(a[2])), Promise.resolve()));
+		try {
+			const link = Array.from(panel.contentEl.querySelectorAll<HTMLElement>('a.internal-link')).find((a) => a.textContent?.includes('Base Culto'))!;
+			link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+			expect(hovers.at(-1)).toMatchObject({ source: 'hexlore-map', targetEl: link, state: { mode: 'source' } });
+			// Page preview wants Mod for this source: the event carries it.
+			expect((hovers.at(-1)!.event as MouseEvent).ctrlKey).toBe(true);
+			link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+			expect(opened).toEqual(['tab']);
+		} finally {
+			app.workspace.offref(ref);
+			spy.mockRestore();
+		}
+	});
+});
+
+describe('notes from the map', () => {
+	const empty = (): [number, number] => {
+		const links = map.mapState().links;
+		for (let q = 0; ; q++) if (!links.has(hexIdFor(q, 2)) && !map.mapState().editor!.model.hexes.has(hexIdFor(q, 2))) return [q, 2];
+	};
+
+	it('a double-click on a hex with no note asks to create its first, links it and opens it over the map', async () => {
+		const hovers: Record<string, unknown>[] = [];
+		const ref = app.workspace.on('hover-link', (e) => hovers.push(e as Record<string, unknown>));
+		const cell = empty();
+		const id = hexIdFor(...cell);
+		try {
+			map.openPrincipalNote(cell, { clientX: 40, clientY: 30 });
+			const modal = Modal.open.at(-1)!;
+			expect(modal.titleEl.textContent).toMatch(/no note yet/);
+			Array.from(modal.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Create')!.click();
+			await tick(20);
+			const editor = map.mapState().editor!;
+			expect(editor.hexNotes(id).length).toBe(1);
+			const made = app.vault.getMarkdownFiles().find((f) => f.path === `Campaign/Places/${displayIdFor(...cell)}.md`)!;
+			expect(made).toBeTruthy();
+			expect(hovers.at(-1)).toMatchObject({ source: 'hexlore-map', linktext: made.path, state: { mode: 'source' } });
+			expect(hovers.at(-1)!.targetEl).toBe(map.containerEl.querySelector('.hexlore-map-stage'));
+			expect((hovers.at(-1)!.event as MouseEvent).clientX).toBe(40);
+			// With a note, a double-click opens it; "a pane beside the map" when set so.
+			plugin.settings.noteOpening = 'pane';
+			const opened: string[] = [];
+			const spy = vi.spyOn(app.workspace, 'openLinkText').mockImplementation((...a: unknown[]) => (opened.push(`${String(a[0])} ${String(a[2])}`), Promise.resolve()));
+			const before = Modal.open.length;
+			map.openPrincipalNote(cell, { clientX: 40, clientY: 30 });
+			spy.mockRestore();
+			expect(Modal.open.length).toBe(before);
+			expect(opened).toEqual([`${editor.hexNotes(id)[0]} split`]);
+			editor.setHexNotes(id, [], 'test cleanup');
+		} finally {
+			plugin.settings.noteOpening = 'popover';
+			app.workspace.offref(ref);
+		}
+	});
+
+	it('a click on a hex shows the map panel when it is hidden (a setting)', async () => {
+		let revealed = 0;
+		const spy = vi.spyOn(app.workspace, 'revealLeaf').mockImplementation(() => (revealed++, Promise.resolve()));
+		const reveal = () => (map as unknown as { panel: { revealOnClick(): void } }).panel.revealOnClick();
+		try {
+			reveal();
+			expect(revealed).toBe(0); // showing already
+			app.workspace.rightSplit.collapsed = true;
+			reveal();
+			await tick();
+			expect(revealed).toBe(1);
+			plugin.settings.revealPanel = false;
+			reveal();
+			await tick();
+			expect(revealed).toBe(1);
+		} finally {
+			plugin.settings.revealPanel = true;
+			app.workspace.rightSplit.collapsed = false;
+			spy.mockRestore();
+		}
+	});
+});
+
+describe('opening a map file', () => {
+	it('shows its map wherever it is opened as Markdown, unless Markdown was asked for', async () => {
+		const leaf = app.workspace.getLeaf();
+		await leaf.setViewState({ type: 'markdown', state: { file: 'Campaign/Fixture.hexmap.md' } });
+		expect(leaf.view).toBeInstanceOf(MapView);
+		expect((leaf.view as unknown as MapView).mapState().file?.path).toBe('Campaign/Fixture.hexmap.md');
+		// A note stays a note.
+		const note = app.workspace.getLeaf();
+		await note.setViewState({ type: 'markdown', state: { file: 'Campaign/Places/Base Culto.md' } });
+		expect(note.view).toBeNull();
+		// "Open as Markdown" is kept.
+		const md = app.workspace.getLeaf();
+		const p = plugin as unknown as { openMarkdown(f: TFile, l: WorkspaceLeaf): void; asMarkdown: Set<string> };
+		const index = app.vault.getAbstractFileByPath('Campaign/Fixture.hexmap.md');
+		if (!(index instanceof TFile)) throw new Error('no index');
+		p.openMarkdown(index, md);
+		await tick();
+		expect(md.view).toBeNull();
+		p.asMarkdown.clear();
 	});
 });
 

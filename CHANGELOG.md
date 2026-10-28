@@ -42,6 +42,17 @@ entries go under *Unreleased*; a release moves them under its version.
   in the Map menu. Of the commands only "Create a new map…", "Show this note
   on the map" and "Open this note as a map" remain, for hotkeys; the others
   moved into the menus.
+- Opening a `.hexmap.md` file opens its map from anywhere: the file
+  explorer, a link, the quick switcher, a restored workspace (it sometimes
+  stayed Markdown before).
+- Notes open from the map in a **floating window** over it, ready to edit
+  (double-click a hex, click a note in the map panel, create a note for a
+  hex); click outside to close it. Setting "Open notes from the map" brings
+  back the pane beside the map. Ctrl/Cmd-click a note in the map panel still
+  opens a new tab.
+- Double-clicking a hex with no note offers to create its first note.
+- Clicking a hex shows the map panel if it is closed or behind another tab
+  (setting "Show the map panel when a hex is clicked").
 
 ### Fixed
 - Paint palette: the preview hexes were pinned to the corner of the strip and

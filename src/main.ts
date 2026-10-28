@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin, TFile, TFolder, type TAbstractFile, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, type TAbstractFile, type ViewState } from 'obsidian';
 import { exportToFlutter } from './convert/export_command';
 import { fileMenu, ribbonMenu, type MenuActions } from './plugin_menus';
 import { PlayerControl } from './server/control';
@@ -30,6 +30,10 @@ export default class HexLorePlugin extends Plugin {
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
 				toggle: () => this.togglePanel(),
+				revealOnClick: () => {
+					if (this.settings.revealPanel && !this.panelShowing()) void this.showPanel(true);
+				},
+				noteOpening: () => this.settings.noteOpening,
 				votes: (file) => this.players.voteCounts(file),
 				exportFlutter: (file) => void exportToFlutter(this.app, this.stores, file),
 				pluginDir: this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
@@ -91,8 +95,11 @@ export default class HexLorePlugin extends Plugin {
 			}),
 		);
 
-		// A `.hexmap.md` index opens as its map (the Excalidraw pattern): when
-		// a Markdown view lands on one, switch that leaf to the map view.
+		// A `.hexmap.md` index opens as its map (the Excalidraw pattern): any
+		// leaf about to show one as Markdown (file explorer, link, quick
+		// switcher, a restored workspace) shows the map instead...
+		this.patchSetViewState();
+		// ...and a Markdown view that lands on one anyway is switched.
 		this.registerEvent(
 			this.app.workspace.on('file-open', (file) => {
 				if (!isMapIndex(this.app, file) || this.asMarkdown.has(file.path)) return;
@@ -119,6 +126,25 @@ export default class HexLorePlugin extends Plugin {
 			name: 'Open the synthetic 100×100 test map',
 			callback: () =>
 				void this.app.workspace.getLeaf('tab').setViewState({ type: MAP_VIEW, active: true, state: { synthetic: true } }),
+		});
+	}
+
+	/** Turn "show this index as Markdown" into "show its map", unless the GM
+	 *  asked for Markdown ("Open as Markdown"). Undone on unload. */
+	private patchSetViewState(): void {
+		const proto = WorkspaceLeaf.prototype;
+		const original = Object.getOwnPropertyDescriptor(proto, 'setViewState')!.value as WorkspaceLeaf['setViewState'];
+		const redirect = (state: ViewState): ViewState => {
+			const path = state.type === 'markdown' ? state.state?.file : undefined;
+			if (typeof path !== 'string' || this.asMarkdown.has(path)) return state;
+			const file = this.app.vault.getAbstractFileByPath(path);
+			return file instanceof TFile && isMapIndex(this.app, file) ? { ...state, type: MAP_VIEW, state: { file: path } } : state;
+		};
+		proto.setViewState = function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
+			return original.call(this, redirect(state), eState);
+		};
+		this.register(() => {
+			proto.setViewState = original;
 		});
 	}
 
@@ -236,14 +262,17 @@ export default class HexLorePlugin extends Plugin {
 	/** The top bar's button: hide the panel when it is showing, else show it. */
 	async togglePanel(): Promise<void> {
 		const ws = this.app.workspace;
-		const leaf = ws.getLeavesOfType(INSPECTOR_VIEW)[0];
-		const right = ws.rightSplit;
-		// Showing = its sidebar is open and it is the visible tab there.
-		if (leaf && !right.collapsed && leaf.view.containerEl.isShown()) {
-			right.collapse();
+		if (this.panelShowing()) {
+			ws.rightSplit.collapse();
 			return;
 		}
 		await this.showPanel(true);
+	}
+
+	/** The panel's sidebar is open and it is the visible tab there. */
+	private panelShowing(): boolean {
+		const leaf = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0];
+		return !!leaf && !this.app.workspace.rightSplit.collapsed && leaf.view.containerEl.isShown();
 	}
 
 	/** The panel lives in the right sidebar; [reveal] brings it to the front. */

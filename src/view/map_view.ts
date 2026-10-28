@@ -6,7 +6,7 @@
 // Camera and display choices are per device (§1.2): they live in the vault's
 // local storage, never in a synced file.
 
-import { FuzzySuggestModal, ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
+import { FuzzySuggestModal, ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, type HoverPopover, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
 import { nearestAnchor } from '../core/anchors';
 import { HEX_RADIUS as R, axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
 import { fitPaste, topLeftCell } from '../core/hex_clipboard';
@@ -42,7 +42,8 @@ import { TopBar } from './top_bar';
 import { DisplayPanel, type DisplayPanelState } from './display_panel';
 import { WheelClassifier } from './wheel_intent';
 import { MapPicker, NewMapModal, newMapFolder, QuickJumpModal, RIVER_WIDTH_PRESETS, RiverWidthModal, ScaleModal, StylusProbeModal, UnassignedModal, type JumpTarget, type Unassigned } from './map_menus';
-import { NewNoteModal } from './inspector_view';
+import { NewNoteModal, newHexNote } from './inspector_view';
+import { HOVER_SOURCE, openNote, type NoteOpening } from './open_note';
 import { createNote, notesInFolder, noteKind, templateFiles } from './vault_notes';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
 import { sectionsOf } from '../storage/index_file';
@@ -114,8 +115,7 @@ const EDITOR_KEY = 'hexlore-editor';
 const DRAG_SLOP = 5; // px before a press becomes a drag
 const FOG_HIDE = '#E05555';
 
-/** The Page preview source the map's hover previews come from. */
-export const HOVER_SOURCE = 'hexlore-map';
+export { HOVER_SOURCE } from './open_note';
 
 /** Broadcast when what the HexLore panel shows may have changed. */
 export const MAP_STATE_EVENT = 'hexlore:map-state';
@@ -179,6 +179,8 @@ export function makeSurface(w: number, h: number): Surface {
 }
 
 export class MapView extends ItemView {
+	/** Page preview's window over the map (Obsidian sets it). */
+	hoverPopover: HoverPopover | null = null;
 	private state: MapViewState = {};
 	private file: TFile | null = null;
 	private dataDir = '';
@@ -258,6 +260,10 @@ export class MapView extends ItemView {
 		private readonly panel: {
 			ensure: () => Promise<void>;
 			toggle: () => Promise<void>;
+			/** Show it if it is hidden (the "Show the map panel when a hex is clicked" setting decides). */
+			revealOnClick: () => void;
+			/** How notes opened from the map show (a setting). */
+			noteOpening: () => NoteOpening;
 			/** Live player votes on this map: hex id → count. */
 			votes: (file: TFile | null) => Map<string, number>;
 			/** "Export as a campaign folder…" (item 2.7). */
@@ -1350,6 +1356,14 @@ export class MapView extends ItemView {
 		return [e.clientX - r.left, e.clientY - r.top];
 	}
 
+	/** Where [cell]'s centre is on screen, in client pixels. */
+	screenPointOf(cell: Cell): { clientX: number; clientY: number } {
+		const r = this.stage.getBoundingClientRect();
+		const cam = this.canvas.camera;
+		const [x, y] = axialToPixel(...cell);
+		return { clientX: r.left + x * cam.scale + cam.ox, clientY: r.top + y * cam.scale + cam.oy };
+	}
+
 	private scenePoint(e: MouseEvent): [number, number] {
 		const [sx, sy] = this.local(e);
 		const cam = this.canvas.camera;
@@ -1863,11 +1877,13 @@ export class MapView extends ItemView {
 		this.selectLine(null);
 		this.selectThread(null);
 		const cell = this.canvas.cellAt(sx, sy);
-		// A double-click on a hex opens its principal note, beside the map.
+		// A double-click on a hex opens its principal note; on a hex with none,
+		// it offers to create the first.
 		if (cell && !additive && last && last.cell === cellKeyOf(cell) && now - last.at < 400) {
-			this.openPrincipalNote(cell);
+			this.openPrincipalNote(cell, e);
 			this.lastClick = null;
 		}
+		if (cell) this.panel.revealOnClick();
 		if (this.lastClick) this.lastClick.cell = cell ? cellKeyOf(cell) : null;
 		if (!cell) this.setSelection(additive ? base : []);
 		else if (additive) {
@@ -2129,14 +2145,37 @@ export class MapView extends ItemView {
 		}).open();
 	}
 
-	/** Open a hex's principal note in a pane beside the map. */
-	openPrincipalNote(cell: Cell): void {
-		const link = this.editor?.hexNotes(hexIdFor(...cell))[0] ?? this.links.get(hexIdFor(...cell))?.[0];
-		if (!link || !this.file) {
-			new Notice('No notes linked to this hex yet: the map panel can create or link one.');
+	/** Open a hex's principal note (as the "Open notes from the map" setting
+	 *  says); a hex with no note: ask to create its first. */
+	openPrincipalNote(cell: Cell, at: { clientX: number; clientY: number }): void {
+		const id = hexIdFor(...cell);
+		const link = this.editor?.hexNotes(id)[0] ?? this.links.get(id)?.[0];
+		const index = this.file;
+		if (!index) return;
+		if (link) {
+			this.openNoteAt(link.split('|')[0]!, index.path, at);
 			return;
 		}
-		void this.app.workspace.openLinkText(link.split('|')[0]!, this.file.path, 'split');
+		const editor = this.editor;
+		if (!editor || editor.readOnly) {
+			new Notice('No notes linked to this hex.');
+			return;
+		}
+		newHexNote(this.app, {
+			heading: 'This hex has no note yet: create its first?',
+			index,
+			cell,
+			label: editor.model.hexes.get(id)?.name || displayIdFor(...cell),
+			editor,
+			templatesFolder: this.panel.templatesFolder(),
+			opened: (file) => this.openNoteAt(file.path, '', at),
+		});
+	}
+
+	/** Open a note from the map: in a floating window over it at the pointer
+	 *  ([at]), or beside it (the "Open notes from the map" setting). */
+	openNoteAt(linktext: string, sourcePath: string, at: { clientX: number; clientY: number }): void {
+		openNote(this.app, this.panel.noteOpening(), linktext, sourcePath, { parent: this, el: this.stage, x: at.clientX, y: at.clientY });
 	}
 
 	/** Page preview of the hovered hex's principal note (with Ctrl, by

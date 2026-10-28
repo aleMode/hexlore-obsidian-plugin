@@ -45,8 +45,10 @@ folder you choose, sharing the default sections at the vault root), turn off
 **A folder for each new map** in the plugin's settings. Maps that already
 exist are never changed.
 
-Everything is saved as you work. To read the index as plain text, use the
-tab's **Open as Markdown** menu entry. **Open this note as a map** goes back.
+Everything is saved as you work. Opening the map's `.hexmap.md` file, from
+the file explorer, a link or the quick switcher, shows the map. To read the
+index as plain text, use the tab's **Open as Markdown** menu entry (or
+right-click the file); **Open as map** in the same menu goes back.
 
 A campaign made in the HexLore desktop app moves over with that app's
 **Export to Obsidian vault…**.
@@ -96,8 +98,17 @@ icon, and a list of **notes**.
 - Select a hex, then in the Map panel: **New note…** (from a template, into
   a section) or **Link a note…**. You can also drag a note from the file
   explorer onto a hex.
+- Clicking a hex shows the Map panel if it is closed (setting **Show the map
+  panel when a hex is clicked**).
 - The **first** note is the hex's **principal note**: Ctrl-hover the hex to
-  preview it, double-click the hex to open it.
+  preview it, double-click the hex to open it. Double-clicking a hex with no
+  note offers to create its first one.
+- A note opened from the map (a double-click, a click on a note in the Map
+  panel, a note just created for a hex) shows in a **floating window** over
+  the map, ready to edit; click outside it to close it. The setting **Open
+  notes from the map** can open them in a pane beside the map instead. The
+  window needs Obsidian's core **Page preview** plugin; without it notes open
+  beside the map. Ctrl/Cmd-click a note in the Map panel for a new tab.
 - Reorder or unlink notes in the Map panel. Unlinking never deletes a note.
   A note that was deleted shows as a dimmed broken link, with *Relink* and
   *Remove*.

@@ -72,14 +72,14 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 | `src/storage/` | The map on the vault. `map_codec.ts` (format-2 files ↔ model, byte-identical to Flutter's output), `map_store.ts` (the loaded map: dirty files, 500 ms debounced flush, external changes, read-only rules), `store_registry.ts` (one store per data folder, shared by views), `vault_fs.ts`, `hexmap_index.ts` / `index_file.ts` (the `.hexmap.md` index), `data_link.ts` (keeps `data:` right across renames). |
 | `src/render/` | The renderer. `scene.ts` (render model + caches), `painter.ts` (paints a scene rect), `tiles.ts` + `map_canvas.ts` (tiled pan, stretched zoom), `textures.ts` (atlas pages for sprites and texture slices), `art.ts` (the art registry), `vendor.ts` (loads the vendored JS spec and tables), `image_export.ts`, `players_scene.ts`. |
 | `src/edit/` | Editing without Obsidian: `editor.ts` (every map change), `undo.ts`, `editors.ts` (one editor per store). |
-| `src/view/` | Obsidian views and UI: `map_view.ts` (the map), `top_bar.ts`, `toolbar.ts`, `display_panel.ts`, `inspector_view.ts` (the Map panel), `sections_view.ts`, `sketch_mode.ts`, `import_wizard.ts`, modals. |
+| `src/view/` | Obsidian views and UI: `map_view.ts` (the map), `top_bar.ts`, `toolbar.ts`, `display_panel.ts`, `inspector_view.ts` (the Map panel), `open_note.ts` (a note opened from the map: Page preview's window via `hover-link`, or a pane), `sections_view.ts`, `sketch_mode.ts`, `import_wizard.ts`, modals. |
 | `src/notes/` | Note conventions (`note_meta.ts`: kinds, `location`, templates, which hexes a note stands for), NPC page sections. |
 | `src/server/` | The player server (`player_server.ts`, Node `http` passed in), its Obsidian side (`control.ts`), the player page assets. |
 | `src/convert/` | "Export as a campaign folder…": `flutter_export.ts` (pure planner), `write.ts` (Node `fs`), `export_command.ts`. |
 | `src/importer/` | Port of Flutter's importer on plain RGBA rasters. |
 | `src/sketch/` | Bucket fill and hexify. |
 | `src/dev/` | The synthetic 100 × 100 map and the renderer benchmark. |
-| `src/main.ts` | The plugin: views, the three commands kept for hotkeys, the index → map view switch, rename following. |
+| `src/main.ts` | The plugin: views, the three commands kept for hotkeys, the index → map view switch (`WorkspaceLeaf.prototype.setViewState` wrapped, undone on unload, plus a `file-open` fallback), rename following. |
 | `src/plugin_menus.ts` | The ribbon icon's menu and the file-menu entries (right-click a map file or a note); everything else is in the Map menu. |
 
 ### Data flow

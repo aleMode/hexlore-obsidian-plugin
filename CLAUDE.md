@@ -220,7 +220,13 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
   map; the selection, regions, sketch tools, travel votes — no display
   choices). `main.ts` switches a Markdown leaf on an index to the map view
-  ("Open as Markdown" to go back). ONE PLACE PER ACTION holds outside a map
+  by wrapping `WorkspaceLeaf.prototype.setViewState` (every way of opening
+  a file goes through it; `file-open` alone missed some), "Open as Markdown"
+  to go back. `open_note.ts`: a note opened from the map (double-click, a
+  panel link, a new hex note) goes to Page preview's window by a
+  `hover-link` with Mod held and `state.mode: 'source'` (setting
+  `noteOpening`); on the map the anchor is the stage, so it opens at the
+  pointer (Page preview does that for targets over 300 px). ONE PLACE PER ACTION holds outside a map
   too: `plugin_menus.ts` is the ribbon icon's menu (the way into a vault
   with no map yet) and the file menu (right-click a map file or a note); the
   commands are only "Create a new map…", "Show this note on the map",
