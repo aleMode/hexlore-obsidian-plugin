@@ -7,6 +7,10 @@ entries go under *Unreleased*; a release moves them under its version.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-14
+
+The first public release.
+
 ### Changed
 - HexLore is now a desktop-only plugin (Windows, macOS, Linux), as the
   community directory requires of a plugin with a local web server and file
@@ -136,3 +140,6 @@ entries go under *Unreleased*; a release moves them under its version.
   of the palette, one on top of the other: the strip's swatch hid the Select
   tool and the palette's tiles showed no preview. Each now sits in its place,
   and the swatch is a larger hex that fills the strip.
+
+[Unreleased]: https://github.com/aleMode/hexlore-obsidian-plugin/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/aleMode/hexlore-obsidian-plugin/releases/tag/1.0.0

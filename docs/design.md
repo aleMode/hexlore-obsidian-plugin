@@ -469,9 +469,9 @@ stand-in for Obsidian.
   and pan stay, for touch screens on desktop.
 - **Publishing** (item 2.11): done in the repository: GPL-3.0-or-later
   `LICENSE`, credits in the README, the manifest description and
-  `isDesktopOnly` to the directory's rules (V9). Left: the repository made
-  public, the 1.0.0 release, the submission at community.obsidian.md and its
-  automated review.
+  `isDesktopOnly` to the directory's rules (V9); history rewritten to the
+  GitHub noreply address; repository public and 1.0.0 tagged (2026-11-14).
+  Left: the submission at community.obsidian.md and its automated review.
 
 ### Deferred, outside both steps
 
