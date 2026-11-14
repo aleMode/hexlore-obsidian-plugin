@@ -192,7 +192,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `linkWriter` → `vault.process`, as per-id deltas applied to the file as it
   is then; a delete UNLINKS notes, never deletes them; a paste adds the
   pasted notes after the target's own;
-  marks the store dirty, records undo, emits the changed cells), `undo.ts`
+  marks the store dirty, records undo, emits the changed cells; FOG is
+  undoable here, unlike Flutter's decision 9: design §1.11), `undo.ts`
   (Flutter's stack + `touches`: entries are dropped when a file they wrote is
   reloaded from disk). `editors.ts`: ONE editor per store, so two views of a
   map share one history.
@@ -241,6 +242,10 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   nothing (a tool click moves focus off the map), never in a text field or
   on a control elsewhere; listened in the capture phase. The wheel readout
   is in "Pen and trackpad diagnostics…" (map menu → HexLore).
+- Encounters (design §1.11): `src/notes/encounter_table.ts` (pure) reads and
+  rolls a region note's tables; `view/encounter_roller.ts` rolls from the
+  panel and the hex menu and appends to the session note. The ported
+  `core/region_encounters.ts` is for the conformance fixtures only.
 - Notes (item 2.5): `src/notes/note_meta.ts` (pure) holds the note
   CONVENTIONS — `type: npc | quest | place` in the frontmatter, Flutter's NPC
   and quest fields under the same names, `location` = link(s) to PLACE NOTES
@@ -252,7 +257,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   RELINK a broken one), "People and quests here", the secondary notes
   (outgoing links, on request), New note (section, kind, template).
   `src/view/sections_view.ts` is the left-sidebar Sections list (§1.4):
-  per-campaign `{name, folder, template?}` in the index frontmatter,
+  per-campaign `{name, folder, template?}` in the index frontmatter (vault
+  paths: `main.ts` rewrites them on a rename, `sectionsAfterRename`),
   defaults until changed, nesting refused; hovering a note lights up its
   hexes, notes drag onto hexes. The map view highlights the hexes of the
   note being read (gold), and "Show this note on the map" centres on them.

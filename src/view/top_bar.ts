@@ -90,7 +90,9 @@ export class TopBar {
 		const display = this.icon(right, 'sliders-horizontal', 'Display and overlays', () => host.toggleDisplay(display));
 		this.divider(right);
 		const players = right.createDiv({ cls: 'hexlore-topbar-split' });
-		this.playersBtn = this.icon(players, 'cast', '', () => host.togglePlayers());
+		// While serving, a click opens the menu (copy link, stop): one click must
+		// not cut every player off and drop their votes mid-session.
+		this.playersBtn = this.icon(players, 'cast', '', (e) => (host.playersRunning() ? host.playersMenu(e) : host.togglePlayers()));
 		this.icon(players, 'chevron-down', 'Player options', (e) => host.playersMenu(e)).addClass('is-caret');
 		this.divider(right);
 		this.icon(right, 'panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => host.togglePanel());
@@ -131,6 +133,6 @@ export class TopBar {
 		const running = h.playersRunning();
 		this.playersBtn.toggleClass('is-active', running);
 		setIcon(this.playersBtn, running ? 'radio' : 'cast');
-		setTooltip(this.playersBtn, running ? `Stop the player view (${h.playersUrl() ?? ''})` : 'Start the player view');
+		setTooltip(this.playersBtn, running ? `Serving at ${h.playersUrl() ?? ''}: click for the link or to stop` : 'Start the player view');
 	}
 }

@@ -1,6 +1,7 @@
 // "Export image…" (plan item 2.10): the options dialog (Flutter's, §1.9) and
 // saving the result into the vault beside the map, then opening it.
 
+import { FORMAT_VERSION } from '../core/campaign_meta';
 import { Modal, Notice, Setting, normalizePath, type App, type TFile } from 'obsidian';
 import { EXPORT_MIN_PX_PER_HEX, PAPERS, printLayout, type Paper, type SceneRect } from '../core/export_layout';
 import { exportPdf, exportPng, type ExportSource, type ImageExportOptions } from '../render/image_export';
@@ -18,6 +19,8 @@ export interface ImageExportRequest {
 	style: ImageExportOptions['style'];
 	blend: boolean;
 	revealed: number;
+	/** The map's format: past this build's, the Players version is refused. */
+	format: number;
 	makeSurface: SurfaceFactory;
 }
 
@@ -89,7 +92,9 @@ export class ImageExportModal extends Modal {
 					.setValue(o.version)
 					.onChange((v) => set({ version: v === 'gm' ? 'gm' : 'players' })),
 			);
-		if (o.version === 'players' && this.req.revealed === 0) {
+		if (o.version === 'players' && this.req.format > FORMAT_VERSION) {
+			el.createDiv({ cls: 'hexlore-warning mod-warning', text: `This map was saved by a newer HexLore (format ${this.req.format}). The Players version is refused: this version might not know what to keep secret. Update the plugin, or choose GM.` });
+		} else if (o.version === 'players' && this.req.revealed === 0) {
 			el.createDiv({ cls: 'hexlore-warning mod-warning', text: 'Nothing is revealed to players yet, so the Players version is an empty grid. Choose GM for the whole map, or reveal hexes with the fog tool first.' });
 		}
 		new Setting(el).setName('Style').addDropdown((d) =>

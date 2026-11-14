@@ -342,6 +342,27 @@ to move between them. Settled with the GM, for now:
 - Open: notes across maps; a pinch on touch screens (wheel and trackpad
   pinch work); following Display & overlays changes while open.
 
+### 1.11 Running a session (2026-11-14)
+
+- **Fog of war is undoable** in the plugin, unlike Flutter's decision 9: a
+  fog-brush drag, reveal / hide, reveal + line of sight, reveal all and hide
+  all are one undo step each. A slip reaches the players within one poll,
+  and "Hide all" destroyed weeks of exploration with no way back. Undo is
+  not in the files, so this is no contract change. Rejected: a fog
+  checkpoint at session start (a second undo with its own rules). Flutter
+  may follow (software_hexlore#7).
+- **Reveal all / Hide all ask first**, and the running players button opens
+  its menu rather than stopping on one click.
+- **Encounters are read by a plugin-side reader**
+  (`notes/encounter_table.ts`): die from the table header, sub-tables,
+  inline dice, the `encounter-chance` check from the note's frontmatter.
+  Flutter's `parseEncounters` stays ported for the conformance fixtures
+  until Flutter adopts the new reader (software_hexlore#7). A roll's lasting
+  record is the session note; the panel's list is memory only.
+- **Party position will be shown to players**: a contract change (a key in
+  the map files and the player filter, a `format` bump per decision 31), so
+  it starts in Flutter (software_hexlore#7).
+
 ---
 
 ## 2. Step 1: the Flutter side (done)

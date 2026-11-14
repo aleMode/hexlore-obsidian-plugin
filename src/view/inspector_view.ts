@@ -6,7 +6,7 @@
 import { FuzzySuggestModal, ItemView, type HoverPopover, Modal, Notice, Setting, TFile, normalizePath, setIcon, type App, type DropdownComponent, type Events, type WorkspaceLeaf } from 'obsidian';
 import { displayIdFor } from '../core/hex';
 import { hexIdFor } from '../core/hex_data';
-import { parseEncounters, rollEncounter } from '../core/region_encounters';
+import { formatChance } from '../notes/encounter_table';
 import type { Cell, LineKind, MapEditor } from '../edit/editor';
 import { ART } from '../render/art';
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
@@ -15,6 +15,7 @@ import { TERRAINS, type Terrain } from '../core/hex_data';
 import { toPlain, type JsonObject } from '../core/json';
 import { sectionsOf, updateRegionLinks } from '../storage/index_file';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
+import { addToSessionNote, checkRegion, chooseTable, chosenTable, clearRollHistory, entryText, readRegionNote, rollHistory, rollRegion, sessionNote, type RegionRef, type RollEntry } from './encounter_roller';
 import { openNote } from './open_note';
 import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
 import type { HexLoreSettings } from '../settings';
@@ -42,7 +43,6 @@ export class InspectorView extends ItemView {
 	/** Page preview's window (Obsidian sets it). */
 	hoverPopover: HoverPopover | null = null;
 	private map: MapView | null = null;
-	private lastRoll: { region: string; text: string } | null = null;
 	/** A render waited for a field to lose focus. */
 	private pending = false;
 
@@ -719,7 +719,10 @@ export class InspectorView extends ItemView {
 		);
 
 		const g = state.activeRegion ? editor.model.regions.get(state.activeRegion) : undefined;
-		if (!g) return;
+		if (!g) {
+			if (state.file) this.renderRolls(state.file, state);
+			return;
+		}
 		el.createEl('h4', { text: g.name || 'Untitled', cls: 'hexlore-panel-hex' }).createSpan({ cls: 'hexlore-panel-coords', text: `  ${plural(g.cells.length, 'hex', 'hexes')}` });
 		new Setting(el).setName('Name').addText((t) => {
 			t.setValue(g.name).setDisabled(ro);
@@ -768,10 +771,7 @@ export class InspectorView extends ItemView {
 					.onClick(() => new NotePicker(this.app, 'Link a note to this region', (file) => void this.setRegionNote(g.id, file)).open()),
 			);
 		}
-		if (note) {
-			const roll = new Setting(el).setName('Encounters').addButton((b) => b.setButtonText('Roll').onClick(() => void this.roll(g.id, note)));
-			if (this.lastRoll?.region === g.id) roll.setDesc(this.lastRoll.text);
-		}
+		if (note && state.file) this.renderEncounters(state.file, { id: g.id, name: g.name || 'Untitled', link: note });
 		new Setting(el).addButton((b) =>
 			b
 				.setButtonText('Delete region…')
@@ -784,6 +784,76 @@ export class InspectorView extends ItemView {
 						map.setActiveRegion(null);
 					}).open(),
 				),
+		);
+		if (state.file) this.renderRolls(state.file, state);
+	}
+
+	/** The active region's encounters: its tables (day / night…), the check
+	 *  from its note's `encounter-chance`, and the roll. */
+	private renderEncounters(index: TFile, region: RegionRef): void {
+		const row = new Setting(this.contentEl).setName('Encounters');
+		const done = (e: RollEntry | null) => {
+			if (e) this.render();
+		};
+		row.addButton((b) => b.setButtonText('Check').setTooltip('The encounter check: roll the chance in the note’s properties (“encounter-chance: 2” = 2 in 6), then the table on a hit').onClick(() => void checkRegion(this.app, index, region).then(done)));
+		row.addButton((b) => b.setButtonText('Roll').setCta().onClick(() => void rollRegion(this.app, index, region).then(done)));
+		// The tables and the chance are in the note: filled in once it is read.
+		void readRegionNote(this.app, index, region.link).then((note) => {
+			if (!row.settingEl.isConnected || !note) return;
+			const parts: string[] = [];
+			if (note.chance) parts.push(`Check ${formatChance(note.chance)}.`);
+			if (!note.tables.length) parts.push('Its note has no “## Encounters” table or list yet.');
+			row.setDesc(parts.join(' '));
+			if (note.tables.length > 1) {
+				const picked = chosenTable(index, region.id) ?? note.tables[0]!.name;
+				row.addDropdown((d) => {
+					for (const t of note.tables) d.addOption(t.name, t.name || 'Encounters');
+					d.setValue(picked).onChange((v) => chooseTable(index, region.id, v));
+					row.controlEl.prepend(d.selectEl);
+				});
+			}
+		});
+	}
+
+	/** This session's rolls on the map, newest first: copy one, add it to
+	 *  the session note, roll its table again. */
+	private renderRolls(index: TFile, state: MapPanelState): void {
+		const rolls = rollHistory(index);
+		if (!rolls.length) return;
+		const el = this.contentEl;
+		el.createEl('h4', { text: 'Rolls this session', cls: 'hexlore-panel-hex' });
+		const session = sessionNote(this.app, index);
+		const list = el.createDiv({ cls: 'hexlore-panel-notes hexlore-rolls' });
+		for (const e of rolls.slice(0, 10)) {
+			const row = list.createDiv({ cls: 'hexlore-note-row hexlore-roll-row' });
+			const d = new Date(e.at);
+			row.createSpan({ cls: 'hexlore-roll-time', text: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` });
+			const text = row.createDiv({ cls: 'hexlore-roll-text', text: e.line });
+			for (const line of e.detail) text.createDiv({ cls: 'hexlore-roll-detail', text: line });
+			const action = (icon: string, label: string, run: () => void) => {
+				const b = row.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': label, role: 'button', tabindex: '0' } });
+				setIcon(b, icon);
+				b.addEventListener('click', run);
+				b.addEventListener('keydown', (k) => {
+					if (k.key === 'Enter' || k.key === ' ') {
+						k.preventDefault();
+						run();
+					}
+				});
+			};
+			action('copy', 'Copy', () => void navigator.clipboard.writeText(entryText(e)).then(() => new Notice('Copied.')));
+			action('file-plus', session ? `Add to “${session.basename}”` : 'Add to the session note (none yet)', () => void addToSessionNote(this.app, index, e));
+			const region = state.regionLinks.get(e.regionId)?.[0];
+			const g = state.editor?.model.regions.get(e.regionId);
+			if (e.table !== undefined && region && g) {
+				action('dices', 'Roll this table again', () => void rollRegion(this.app, index, { id: g.id, name: g.name || 'Untitled', link: region }, e.table).then((r) => r && this.render()));
+			}
+		}
+		new Setting(el).addButton((b) =>
+			b.setButtonText('Clear the list').onClick(() => {
+				clearRollHistory(index);
+				this.render();
+			}),
 		);
 	}
 
@@ -812,24 +882,9 @@ export class InspectorView extends ItemView {
 		let path = `${base}.md`;
 		for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) path = `${base} ${n}.md`;
 		if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder).catch(() => undefined);
-		const file = await this.app.vault.create(path, `# ${name}\n\n## Encounters\n\n| d6 | Encounter |\n|---|---|\n| 1-2 | |\n| 3-4 | |\n| 5-6 | |\n`);
+		const file = await this.app.vault.create(path, `---\nencounter-chance: 1 in 6\n---\n\n# ${name}\n\n## Encounters\n\n| d6 | Encounter |\n|---|---|\n| 1-2 | |\n| 3-4 | |\n| 5-6 | |\n`);
 		await this.setRegionNote(regionId, file);
 		await this.app.workspace.getLeaf('tab').openFile(file);
-	}
-
-	private async roll(regionId: string, link: string): Promise<void> {
-		const source = this.indexFile()?.path ?? '';
-		const file = this.app.metadataCache.getFirstLinkpathDest(link.split('|')[0]!.split('#')[0]!, source);
-		if (!file) {
-			new Notice('The region’s note is missing.');
-			return;
-		}
-		const encounters = parseEncounters(await this.app.vault.cachedRead(file));
-		const result = rollEncounter(encounters);
-		const text = result ?? 'Its note has no “## Encounters” table or list yet.';
-		this.lastRoll = { region: regionId, text: result ? `Rolled: ${result}` : text };
-		new Notice(result ? `Encounter: ${result}` : text, 6000);
-		this.render();
 	}
 }
 
@@ -869,12 +924,13 @@ class NamePrompt extends Modal {
 	}
 }
 
-class ConfirmModal extends Modal {
+export class ConfirmModal extends Modal {
 	constructor(
 		app: App,
 		private readonly heading: string,
 		private readonly text: string,
 		private readonly accept: () => void,
+		private readonly action = 'Delete',
 	) {
 		super(app);
 	}
@@ -886,7 +942,7 @@ class ConfirmModal extends Modal {
 			.addButton((b) => b.setButtonText('Cancel').onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText('Delete')
+					.setButtonText(this.action)
 					.setDestructive()
 					.onClick(() => {
 						this.close();

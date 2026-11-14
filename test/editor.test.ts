@@ -75,10 +75,29 @@ describe('the map editor', () => {
 	it('reveals and hides, clamped to the grid; line of sight projects once', async () => {
 		const { editor, store, events } = await setup();
 		expect(editor.setRevealed([[1, 1], [999, 0]], true)).toEqual([[1, 1]]);
-		expect(events.at(-1)).toEqual({ kind: 'revealed', cells: [[1, 1]] });
+		expect(events).toContainEqual({ kind: 'revealed', cells: [[1, 1]] });
 		expect(editor.allRevealed([[0, 0], [1, 1]])).toBe(true);
 		editor.setRevealed([[1, 1]], false);
 		expect(store.model.revealed.has('q1_r1')).toBe(false);
+		// Fog is undoable in the plugin (Flutter's decision 9 is not).
+		expect(editor.undoLast()).toBe('Hide 1 hex');
+		expect(store.model.revealed.has('q1_r1')).toBe(true);
+		editor.redoLast();
+		expect(store.model.revealed.has('q1_r1')).toBe(false);
+	});
+
+	it('makes one undo step of a fog-brush drag, and of reveal all', async () => {
+		const { editor, store } = await setup();
+		const before = new Set(store.model.revealed);
+		editor.paintFog([[2, 2]], true);
+		editor.paintFog([[3, 2], [2, 2]], true);
+		editor.endFogStroke();
+		expect(editor.undo.nextUndoLabel).toBe('Reveal 2 hexes');
+		editor.undoLast();
+		expect(store.model.revealed).toEqual(before);
+		editor.setAllRevealed(true);
+		expect(editor.undoLast()).toBe('Reveal all hexes');
+		expect(store.model.revealed).toEqual(before);
 		// A mountain sees two hexes further than flat ground.
 		editor.paint([[10, 5]], PaintPick.biome('mountain'));
 		editor.endStroke();

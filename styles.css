@@ -1280,3 +1280,29 @@
 	height: auto;
 	font-size: var(--font-ui-smaller);
 }
+
+/* Map panel: this session's encounter rolls. */
+.hexlore-roll-row {
+	align-items: flex-start;
+	padding-block: var(--size-2-1);
+}
+
+.hexlore-roll-time {
+	flex: none;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	margin-inline-end: var(--size-4-2);
+	padding-top: 2px;
+}
+
+.hexlore-roll-text {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.hexlore-roll-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}

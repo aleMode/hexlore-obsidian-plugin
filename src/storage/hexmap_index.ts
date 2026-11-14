@@ -268,3 +268,28 @@ export function sectionProblems(sections: Section[]): string[] {
 	}
 	return out;
 }
+
+/** [path] after [from] (a file or a folder) was renamed to [to], or null when
+ *  [path] is neither [from] nor inside it. */
+function movedTo(path: string, from: string, to: string): string | null {
+	if (path === from) return to;
+	return path.startsWith(`${from}/`) ? to + path.slice(from.length) : null;
+}
+
+/** [sections] after the vault path [from] was renamed to [to]: section
+ *  folders and templates at or under it follow. Null when none moved (the
+ *  frontmatter stays as it is). Section folders are vault paths, which
+ *  Obsidian does not update the way it updates links. */
+export function sectionsAfterRename(sections: readonly Section[], from: string, to: string): Section[] | null {
+	let changed = false;
+	const out = sections.map((s) => {
+		const folder = movedTo(s.folder, from, to);
+		const template = s.template !== undefined ? movedTo(s.template, from, to) : null;
+		if (folder === null && template === null) return s;
+		changed = true;
+		const next: Section = { name: s.name, folder: folder ?? s.folder };
+		if (s.template !== undefined) next.template = template ?? s.template;
+		return next;
+	});
+	return changed ? out : null;
+}
