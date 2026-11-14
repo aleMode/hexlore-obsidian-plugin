@@ -105,7 +105,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
     writes BYTE-IDENTICAL files to Flutter's (test: `map_codec.test.ts`).
   - `map_store.ts` — the loaded map: dirty chunks/layers, 500 ms debounced
     flush, own writes recognised, external changes reloaded per file
-    (unsaved edits to that file discarded and reported), unparseable files
+    (unsaved edits to that file discarded and reported; a flush READS each
+    file first and reloads it if it changed meanwhile), unparseable files
     never written, newer format or format 1 READ-ONLY (Flutter migrates 1→2).
   - `vault_fs.ts` (Vault API), `store_registry.ts` (one store per data
     folder, shared by views; vault events batched; flush on quit/unload).
@@ -190,7 +191,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   undoable, clears the history, like Flutter). Hexes carry their NOTE LINKS:
   the editor keeps `links` (from the index) and writes changes through
   `linkWriter` → `vault.process`, as per-id deltas applied to the file as it
-  is then; a delete UNLINKS notes, never deletes them; a paste adds the
+  is then (a failed write → `linkWriteFailed`; kept link texts pass
+  `fixLink`, which follows this session's renames,
+  `notes/link_renames.ts`); a delete UNLINKS notes, never deletes them; a paste adds the
   pasted notes after the target's own;
   marks the store dirty, records undo, emits the changed cells; FOG is
   undoable here, unlike Flutter's decision 9: design §1.11), `undo.ts`
@@ -209,6 +212,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   split button, the map panel), its dialogs in `map_menus.ts` — keep its
   menus and entries in step with Flutter's. Fullscreen and the map panel
   button are the plugin's own (Flutter has a window, not a sidebar).
+  KEYBOARD: every control of our own is made with `asButton`
+  (`view/a11y.ts`: role, tabindex, Enter / Space); shortcut text uses
+  `MOD` / `keys('Mod+Z')`, never a literal "Ctrl".
   ONE PLACE PER ACTION: the tab header adds only "Open as Markdown" and the
   "⋯" pane menu adds nothing; anything for the map goes in the top bar or
   its menus. Fullscreen moves the view's `contentEl` into `<body>` (fixed,
@@ -221,7 +227,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   `inspector_view.ts` is the right-sidebar "Map panel" (follows the active
   map; the selection, regions, sketch tools, travel votes — no display
   choices). `main.ts` switches a Markdown leaf on an index to the map view
-  by wrapping `WorkspaceLeaf.prototype.setViewState` (every way of opening
+  by wrapping `WorkspaceLeaf.prototype.setViewState` through `patch.ts`
+  `around` (never assign a prototype method and restore it: another
+  plugin's later wrapper would vanish) (every way of opening
   a file goes through it; `file-open` alone missed some), "Open as Markdown"
   to go back. `open_note.ts`: a note opened from the map (double-click, a
   panel link, a new hex note) goes to Page preview's window by a
@@ -265,7 +273,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   A hex holding ONLY notes (no map record) is a hex like any other for
   cut / copy / paste / delete / move / explode / resize.
 - `src/server/` — the player view (item 2.6). `player_server.ts` is the
-  HTTP server (Node `http` passed in; tests run it on a real socket): the
+  HTTP server (Node `http` passed in; tests run it on a real socket;
+  Host must be an IP / localhost / this computer's name, votes same-Origin,
+  8 voters per address; `control.ts` queues start / stop): the
   player page (`assets.ts`: vendor/player/ files as text, `?raw` imports),
   `/api/map` = the ported `player_filter` output with an ETag (304 while
   unchanged; `player.js` sends it back), `/api/votes`, `POST /api/vote`

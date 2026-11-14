@@ -8,7 +8,7 @@
 
 import { FuzzySuggestModal, ItemView, Menu, Modal, Notice, Platform, Scope, Setting, TFile, type ButtonComponent, type HoverPopover, apiVersion, normalizePath, type App, type Events, type ViewStateResult, type WorkspaceLeaf } from 'obsidian';
 import { nearestAnchor } from '../core/anchors';
-import { HEX_RADIUS as R, axialToPixel, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
+import { HEX_RADIUS as R, axialToPixel, cellInGrid, cellsInRect, hexDistance, nodePixel, pixelToAxial } from '../core/geometry';
 import { fitPaste, topLeftCell } from '../core/hex_clipboard';
 import { nearestLineSegment } from '../core/line_edit';
 import { sameAnchor, type Anchor } from '../core/river';
@@ -36,7 +36,8 @@ import { updateHexLinks } from '../storage/index_file';
 import { LAYER_FILES as LAYER_PATHS } from '../storage/map_codec';
 import type { MapStore, StoreEvent } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
-import { hexesByNote, hexesOfNote } from './vault_notes';
+import { hexesByNote, hexesOfNote, noteRenames, resolveLink } from './vault_notes';
+import { withLinkPath } from '../notes/link_renames';
 import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { TopBar } from './top_bar';
 import { DisplayPanel, type DisplayPanelState } from './display_panel';
@@ -48,8 +49,10 @@ import { createNote, notesInFolder, noteKind, templateFiles } from './vault_note
 import { DEFAULT_SECTIONS, type Section } from '../storage/hexmap_index';
 import { sectionsOf } from '../storage/index_file';
 import { displayIdFor } from '../core/hex';
+import { parseJumpCoords } from '../core/quick_jump';
 import { threadColorGroups } from '../core/overlay_filter';
 import { ImageExportModal } from './image_export_modal';
+import { MOD } from './a11y';
 import { ConfirmModal } from './inspector_view';
 import { rollRegion } from './encounter_roller';
 import { HexifyModal } from './hexify_modal';
@@ -115,6 +118,8 @@ const overlaysKey = (path: string) => `hexlore-overlays:${path}`;
 export const DISPLAY_KEY = 'hexlore-display';
 const EDITOR_KEY = 'hexlore-editor';
 const DRAG_SLOP = 5; // px before a press becomes a drag
+/** The session notes menu lists this many, newest first. */
+const SESSION_MENU_NOTES = 10;
 const FOG_HIDE = '#E05555';
 
 export { HOVER_SOURCE } from './open_note';
@@ -355,20 +360,16 @@ export class MapView extends ItemView {
 			setPick: (p) => {
 				this.pick = p;
 				this.savePrefs();
-				this.toolbar.refresh(...this.historyLabels());
+				this.toolbar.refresh();
 			},
 			brush: () => this.brush,
 			setBrush: (n) => this.setBrush(n),
-			undo: () => this.undoLast(),
-			redo: () => this.redoLast(),
-			canUndo: () => !!this.editor?.undo.canUndo,
-			canRedo: () => !!this.editor?.undo.canRedo,
 			readOnly: () => !this.editor || this.editor.readOnly,
 			routeKind: () => this.routeKind,
 			setRouteKind: (k) => {
 				this.routeKind = k;
 				this.savePrefs();
-				this.toolbar.refresh(...this.historyLabels());
+				this.toolbar.refresh();
 			},
 			routeColor: () => this.routeColor,
 			setRouteColor: (c) => {
@@ -511,6 +512,24 @@ export class MapView extends ItemView {
 							}
 							return hexes;
 						});
+					// An undo brings back link texts kept earlier: one to a note renamed
+					// since follows it to its new name.
+					this.editor.fixLink = (link) => {
+						const source = this.file?.path ?? index.path;
+						if (resolveLink(this.app, link, source)) return link;
+						const to = noteRenames.follow(link);
+						const file = to ? this.app.vault.getAbstractFileByPath(to) : null;
+						return file instanceof TFile ? withLinkPath(link, this.app.metadataCache.fileToLinktext(file, source, true)) : link;
+					};
+					// A failed write is said, and the index read again: the map must not
+					// show links the file does not have.
+					this.editor.linkWriteFailed = (e) => {
+						new Notice(`Could not save the note links in “${this.file?.basename ?? index.basename}”: ${e instanceof Error ? e.message : String(e)}. The map shows the links the file has.`, 10000);
+						const before = new Set(this.links.keys());
+						void this.readIndex()
+							.then(() => this.relinkScene(before))
+							.catch(() => {});
+					};
 				}
 				await this.readIndex();
 				this.data = sceneDataFromModel(this.store!.model, new Set(this.links.keys()));
@@ -530,7 +549,7 @@ export class MapView extends ItemView {
 		this.canvas.resize();
 		if (first) this.restoreCamera();
 		if (!this.editor && this.tool !== 'select' && this.tool !== 'ruler') this.tool = 'select';
-		this.toolbar.refresh(...this.historyLabels());
+		this.toolbar.refresh();
 		this.broadcast();
 	}
 
@@ -848,7 +867,11 @@ export class MapView extends ItemView {
 			};
 			notes.sort((a, b) => order(a) - order(b) || a.basename.localeCompare(b.basename));
 		}
-		for (const f of notes) menu.addItem((i) => i.setTitle(f.basename).setIcon('file-text').onClick(() => void this.openBeside(f)));
+		// Session notes: the newest first, and only the last few (a popup of
+		// fifty sessions is unusable); the rest are in Sections.
+		const shown = sectionName === 'GM notes' ? [...notes].sort((a, b) => b.stat.ctime - a.stat.ctime).slice(0, SESSION_MENU_NOTES) : notes;
+		for (const f of shown) menu.addItem((i) => i.setTitle(f.basename).setIcon('file-text').onClick(() => void this.openBeside(f)));
+		if (shown.length < notes.length) menu.addItem((i) => i.setTitle(`All ${notes.length} in Sections`).setIcon('list-tree').onClick(() => this.panel.showSections()));
 		if (!notes.length) menu.addItem((i) => i.setTitle(section ? 'None yet' : `No “${sectionName}” section`).setDisabled(true));
 		menu.addItem((i) =>
 			i
@@ -930,11 +953,15 @@ export class MapView extends ItemView {
 			const f = this.app.vault.getAbstractFileByPath(p);
 			if (f instanceof TFile) addNote(f);
 		}
-		for (const f of this.app.vault.getMarkdownFiles()) {
-			const k = noteKind(this.app, f);
-			if (k === 'npc' || k === 'quest') addNote(f);
-		}
+		// Characters and quests of THIS map: in its sections (another campaign
+		// in the same vault keeps its own).
 		const sections = sectionsOf(this.app, this.file) ?? [...DEFAULT_SECTIONS];
+		for (const s of sections) {
+			for (const f of notesInFolder(this.app, s.folder)) {
+				const k = noteKind(this.app, f);
+				if (k === 'npc' || k === 'quest') addNote(f);
+			}
+		}
 		const adv = sections.find((x) => x.name.toLowerCase() === 'adventures');
 		if (adv) for (const f of notesInFolder(this.app, adv.folder)) if (!seen.has(f.path)) entries.push({ label: f.basename, kind: 'adventure', hexes: new Set(), file: f });
 		new QuickJumpModal(this.app, entries, (t) => {
@@ -945,6 +972,12 @@ export class MapView extends ItemView {
 					if (c) this.setSelection([cellKeyOf(c)]);
 				}
 			} else if (t.file) void this.openBeside(t.file);
+		}, (query) => {
+			const c = parseJumpCoords(query);
+			if (!c || !cellInGrid(c[0], c[1], m.meta.grid)) return null;
+			const id = hexIdFor(c[0], c[1]);
+			const name = m.hexes.get(id)?.name;
+			return { label: `${displayIdFor(c[0], c[1])}${name ? ` · ${name}` : ''}`, kind: 'coords', hexes: new Set([id]), file: null };
 		}).open();
 	}
 
@@ -955,13 +988,16 @@ export class MapView extends ItemView {
 		const serving = players.serves(file);
 		const url = players.url;
 		const menu = new Menu();
-		menu.addItem((i) => i.setTitle(serving && url ? `Serving at ${url}` : players.running ? 'Serving another map' : 'Player server stopped').setIsLabel(true));
-		if (serving && url) menu.addItem((i) => i.setTitle('Copy player link').setIcon('copy').onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))));
-		else menu.addItem((i) => i.setTitle('Start the player view').setIcon('cast').setDisabled(!file).onClick(() => file && void players.start(file)));
-		if (serving) menu.addItem((i) => i.setTitle('Stop the player view').setIcon('square').onClick(() => void players.stop()));
-		const lan = this.panel.playerLan();
-		menu.addItem((i) => i.setTitle('Serve on the local network').setChecked(lan).onClick(() => this.panel.setPlayerLan(!lan)));
-		menu.addSeparator();
+		// The server needs a computer; on a phone the menu is the fog only.
+		if (Platform.isDesktopApp) {
+			menu.addItem((i) => i.setTitle(serving && url ? `Serving at ${url}` : players.running ? 'Serving another map' : 'Player server stopped').setIsLabel(true));
+			if (serving && url) menu.addItem((i) => i.setTitle('Copy player link').setIcon('copy').onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))));
+			else menu.addItem((i) => i.setTitle('Start the player view').setIcon('cast').setDisabled(!file).onClick(() => file && void players.start(file)));
+			if (serving) menu.addItem((i) => i.setTitle('Stop the player view').setIcon('square').onClick(() => void players.stop()));
+			const lan = this.panel.playerLan();
+			menu.addItem((i) => i.setTitle('Serve on the local network').setChecked(lan).onClick(() => this.panel.setPlayerLan(!lan)));
+			menu.addSeparator();
+		}
 		menu.addItem((i) => i.setTitle('Fog of war').setIsLabel(true));
 		const ro = !this.editor || this.editor.readOnly;
 		menu.addItem((i) =>
@@ -986,11 +1022,11 @@ export class MapView extends ItemView {
 	private allFog(reveal: boolean, serving: boolean): void {
 		const go = () => {
 			const n = this.editor?.setAllRevealed(reveal) ?? 0;
-			new Notice(`${reveal ? 'Revealed' : 'Hid'} ${n} hex${n === 1 ? '' : 'es'}. Ctrl+Z undoes it.`);
+			new Notice(`${reveal ? 'Revealed' : 'Hid'} ${n} hex${n === 1 ? '' : 'es'}. ${MOD}+Z undoes it.`);
 		};
 		const what = reveal ? 'Reveal every hex to players?' : 'Hide every hex from players?';
 		const why = serving ? ' Players connected now see it within a few seconds.' : '';
-		new ConfirmModal(this.app, reveal ? 'Reveal all' : 'Hide all', `${what}${why} Undo (Ctrl+Z) puts it back.`, go, reveal ? 'Reveal all' : 'Hide all').open();
+		new ConfirmModal(this.app, reveal ? 'Reveal all' : 'Hide all', `${what}${why} Undo (${MOD}+Z) puts it back.`, go, reveal ? 'Reveal all' : 'Hide all').open();
 	}
 
 	// ----- editing: state ---------------------------------------------------------
@@ -1038,10 +1074,6 @@ export class MapView extends ItemView {
 		});
 	}
 
-	private historyLabels(): [string | null, string | null] {
-		return [this.editor?.undo.nextUndoLabel ?? null, this.editor?.undo.nextRedoLabel ?? null];
-	}
-
 	private savePrefs(): void {
 		this.app.saveLocalStorage(EDITOR_KEY, {
 			tool: this.tool,
@@ -1072,7 +1104,7 @@ export class MapView extends ItemView {
 		if (t === 'region') this.ensureActiveRegion();
 		this.toolbar.closePalette();
 		this.savePrefs();
-		this.toolbar.refresh(...this.historyLabels());
+		this.toolbar.refresh();
 		this.hideTooltip();
 		this.canvas.paintOverlay();
 		this.broadcast();
@@ -1081,7 +1113,7 @@ export class MapView extends ItemView {
 	private setBrush(n: number): void {
 		this.brush = Math.min(MAX_BRUSH, Math.max(0, n));
 		this.savePrefs();
-		this.toolbar.refresh(...this.historyLabels());
+		this.toolbar.refresh();
 		this.canvas.paintOverlay();
 	}
 
@@ -1111,7 +1143,7 @@ export class MapView extends ItemView {
 		const scene = this.canvas.getScene();
 		const model = this.editor?.model;
 		if (e.kind === 'history') {
-			this.toolbar.refresh(...this.historyLabels());
+			this.toolbar.refresh();
 			this.broadcast();
 			return;
 		}
@@ -2052,7 +2084,7 @@ export class MapView extends ItemView {
 	clearSketch(): void {
 		const editor = this.editor;
 		if (!editor || !editor.sketch.items.length) return;
-		new ConfirmPrompt(this.app, 'Clear the sketch', `Remove all ${editor.sketch.items.length} drawn items? Ctrl+Z in the Sketch view brings them back.`, 'Clear', () => editor.clearSketch()).open();
+		new ConfirmPrompt(this.app, 'Clear the sketch', `Remove all ${editor.sketch.items.length} drawn items? ${MOD}+Z in the Sketch view brings them back.`, 'Clear', () => editor.clearSketch()).open();
 	}
 
 	/** The trace image as loaded (null when none). */
@@ -2448,7 +2480,7 @@ export class MapView extends ItemView {
 			return;
 		}
 		new Notice(
-			`${cut ? 'Cut' : 'Copied'} ${n === 1 ? 'hex' : `${n} hexes`}: select where it goes and press Ctrl+V.` +
+			`${cut ? 'Cut' : 'Copied'} ${n === 1 ? 'hex' : `${n} hexes`}: select where it goes and press ${MOD}+V.` +
 				(cut && replacedCut ? ' The hexes cut before are no longer on the clipboard (undo brings them back).' : ''),
 			4000,
 		);

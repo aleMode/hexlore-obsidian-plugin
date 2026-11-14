@@ -359,6 +359,16 @@ to move between them. Settled with the GM, for now:
   Flutter's `parseEncounters` stays ported for the conformance fixtures
   until Flutter adopts the new reader (software_hexlore#7). A roll's lasting
   record is the session note; the panel's list is memory only.
+- **Travel here** settles a travel vote from the map panel
+  (`view/travel_modal.ts`): the GM confirms and picks the reveal (the hex,
+  or the hex and what is in sight; the last choice is the default, per
+  device), the votes are cleared and the trip is appended to the session
+  note. No party marker yet: it waits for the format change below.
+- **Keyboard and platform** (for the community directory): every control
+  of the plugin's own is a `role="button"` with a tabindex, pressed with
+  Enter or Space (`view/a11y.ts`); shortcuts are written `MOD` (Cmd on
+  macOS). One undo / redo pair, in the top bar. The player view's entries
+  are hidden on phones rather than refusing when used.
 - **Party position will be shown to players**: a contract change (a key in
   the map files and the player filter, a `format` bump per decision 31), so
   it starts in Flutter (software_hexlore#7).
@@ -438,7 +448,7 @@ stand-in for Obsidian.
 | V6 | `Vault.append` exists | an append-only sketch file, as an optimisation only | 2.8 |
 | V7 | The Dart perfect-freehand port: licence, maintenance, quality | item 1.8 | 1.8 |
 | V8 | Pen pressure reaches Obsidian on Windows with Windows Ink | the sketch | 2.0 |
-| V9 | Community review policy for plugins with a LAN server | publishing only | 2.11 |
+| V9 | Community review policy for plugins with a LAN server. **Checked 2026-11-14** (obsidian-developer-docs, *Community directory*): no rule against a local server; "network use" and "accessing files outside of Obsidian vaults" are allowed "if clearly indicated in your README" (done: README, *Network use*). But *Submission requirements* says a plugin using Node.js APIs (`fs`, `os`…) "**must** set `isDesktopOnly` to `true`", which this plugin does not (§1.2: maps readable on mobile). Open: set it, or ask the reviewers whether lazy loading through `desktop.ts` is accepted | publishing only | 2.11 |
 | V10 | Licence and quality of Flutter's `pdf` package, and of pdf-lib / jsPDF | the PDF export | 1.14 / 2.10 |
 
 ---

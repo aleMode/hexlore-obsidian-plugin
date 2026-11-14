@@ -17,6 +17,7 @@
 
 import { SliderComponent, ToggleComponent, setIcon, setTooltip, type App } from 'obsidian';
 import type { ColorGroup } from '../core/overlay_filter';
+import { asButton } from './a11y';
 import type { Display, OverlayState } from './map_view';
 import type { SketchOverlay, SketchOverlayMode } from './sketch_mode';
 
@@ -149,7 +150,7 @@ export class DisplayPanel {
 		const sketchShown = s.sketchOverlay !== 'none';
 		const sketch = row(el, { label: 'Sketch overlay', shown: sketchShown, onShown: (v) => h.showSketchOverlay(v) });
 		const labels = s.sketchOverlayMode === 'labels';
-		const chip = sketch.createDiv({ cls: 'hexlore-display-chip', text: 'Labels only' });
+		const chip = asButton(sketch.createDiv({ cls: 'hexlore-display-chip', text: 'Labels only' }));
 		chip.toggleClass('is-active', labels);
 		setTooltip(chip, 'Show only the sketch labels, at full strength');
 		chip.addEventListener('click', () => h.showSketchOverlay(sketchShown, labels ? 'full' : 'labels'));
@@ -225,7 +226,7 @@ function row(el: HTMLElement, o: { label: string; shown?: boolean; onShown?: ((v
 }
 
 function iconButton(el: HTMLElement, icon: string, tip: string, click: () => void): HTMLElement {
-	const b = el.createDiv({ cls: 'clickable-icon hexlore-display-icon' });
+	const b = asButton(el.createDiv({ cls: 'clickable-icon hexlore-display-icon' }));
 	setIcon(b, icon);
 	setTooltip(b, tip);
 	b.addEventListener('click', () => {
@@ -238,8 +239,9 @@ function iconButton(el: HTMLElement, icon: string, tip: string, click: () => voi
 function segments<T extends string>(el: HTMLElement, options: [T, string][], selected: T, on: (v: T) => void): void {
 	const group = el.createDiv({ cls: 'hexlore-segments' });
 	for (const [value, label] of options) {
-		const seg = group.createDiv({ cls: 'hexlore-segment', text: label });
+		const seg = asButton(group.createDiv({ cls: 'hexlore-segment', text: label }));
 		seg.toggleClass('is-active', value === selected);
+		seg.setAttribute('aria-pressed', String(value === selected));
 		seg.addEventListener('click', () => {
 			if (value !== selected) on(value);
 		});

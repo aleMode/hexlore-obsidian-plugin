@@ -4,9 +4,14 @@
 
 import { TFile, TFolder, moment, normalizePath, type App } from 'obsidian';
 import { expandTemplate, hexesForNote, kindOf, locationLinks, safeNoteName, starterFrontmatter, type NoteKind, type TemplateVars } from '../notes/note_meta';
+import { RenameLog } from '../notes/link_renames';
 
 /** A link's path part: no alias, no heading or block. */
 export const linkPath = (link: string): string => link.split('|')[0]!.split('#')[0]!.trim();
+
+/** This session's renames (fed by main.ts), so an undo can bring back a
+ *  link to a note renamed since (`notes/link_renames.ts`). */
+export const noteRenames = new RenameLog();
 
 export function resolveLink(app: App, link: string, source: string): TFile | null {
 	return app.metadataCache.getFirstLinkpathDest(linkPath(link), source);

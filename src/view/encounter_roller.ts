@@ -149,13 +149,20 @@ export function sessionNote(app: App, index: TFile): TFile | null {
 }
 
 /** Add [e] at the end of the session note, as a list item. */
-export async function addToSessionNote(app: App, index: TFile, e: RollEntry): Promise<void> {
+export function addToSessionNote(app: App, index: TFile, e: RollEntry): Promise<boolean> {
+	return appendToSessionNote(app, index, e.line, e.detail, e.at);
+}
+
+/** Add `- HH:MM · [line]` (and [detail] under it) at the end of the session
+ *  note. False, with a notice, when there is none. */
+export async function appendToSessionNote(app: App, index: TFile, line: string, detail: string[] = [], at = Date.now()): Promise<boolean> {
 	const note = sessionNote(app, index);
 	if (!note) {
 		new Notice('No session note yet: create one from the notes button in the top bar.');
-		return;
+		return false;
 	}
-	const lines = [`- ${time(e.at)} · ${e.line}`, ...e.detail.map((d) => `    - ${d}`)].join('\n');
+	const lines = [`- ${time(at)} · ${line}`, ...detail.map((d) => `    - ${d}`)].join('\n');
 	await app.vault.process(note, (text) => (text.trim() ? `${text.replace(/\n*$/, '\n')}${lines}\n` : `${lines}\n`));
 	new Notice(`Added to “${note.basename}”.`);
+	return true;
 }

@@ -10,6 +10,8 @@ import { StoreRegistry } from './storage/store_registry';
 import { renamePaths, type AtlasLayout } from './view/atlas_layout';
 import { ATLAS_VIEW, AtlasPickerModal, AtlasView } from './view/atlas_view';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
+import { around } from './patch';
+import { noteRenames } from './view/vault_notes';
 import { MapPicker, NewMapModal, newMapFolder } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
@@ -96,6 +98,8 @@ export default class HexLorePlugin extends Plugin {
 			// overlapping frontmatter writes would undo each other.
 			this.sectionRenames = this.sectionRenames.then(() => this.followSectionRename(old, f.path));
 		}));
+		// An undo can bring back a link to a note renamed since: it follows.
+		this.registerEvent(this.app.vault.on('rename', (f, old) => noteRenames.record(old, f.path)));
 		// "Show maps together" keeps its maps by index path: it follows them.
 		this.registerEvent(
 			this.app.vault.on('rename', (f, old) => {
@@ -141,20 +145,21 @@ export default class HexLorePlugin extends Plugin {
 	/** Turn "show this index as Markdown" into "show its map", unless the GM
 	 *  asked for Markdown ("Open as Markdown"). Undone on unload. */
 	private patchSetViewState(): void {
-		const proto = WorkspaceLeaf.prototype;
-		const original = Object.getOwnPropertyDescriptor(proto, 'setViewState')!.value as WorkspaceLeaf['setViewState'];
 		const redirect = (state: ViewState): ViewState => {
 			const path = state.type === 'markdown' ? state.state?.file : undefined;
 			if (typeof path !== 'string' || this.asMarkdown.has(path)) return state;
 			const file = this.app.vault.getAbstractFileByPath(path);
 			return file instanceof TFile && isMapIndex(this.app, file) ? { ...state, type: MAP_VIEW, state: { file: path } } : state;
 		};
-		proto.setViewState = function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
-			return original.call(this, redirect(state), eState);
-		};
-		this.register(() => {
-			proto.setViewState = original;
-		});
+		// Through `around`: another plugin may wrap setViewState after us
+		// (Excalidraw, Kanban…), and unloading must not remove its wrapper.
+		this.register(
+			around(WorkspaceLeaf.prototype, 'setViewState', (next) =>
+				function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
+					return next.call(this, redirect(state), eState);
+				},
+			),
+		);
 	}
 
 	private newMap(): void {

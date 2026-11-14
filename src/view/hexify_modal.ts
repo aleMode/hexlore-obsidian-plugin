@@ -6,6 +6,7 @@ import { Modal, Notice, Setting, type App } from 'obsidian';
 import { planImport, type ImportMode, type ImportPlan } from '../core/import_plan';
 import { HexifyRecord } from '../core/sketch';
 import type { MapEditor } from '../edit/editor';
+import { MOD } from './a11y';
 import { hexifySketch, protectHandEdits, type HexifyResult, type ProtectedHexify } from '../sketch/hexify';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -146,7 +147,7 @@ export class HexifyModal extends Modal {
 			return;
 		}
 		const out = this.editor.applyImport(plan, true);
-		new Notice(`Hexify: ${plural(out.applied, 'hex', 'hexes')} painted${out.riversAdded ? `, ${plural(out.riversAdded, 'river')}` : ''}${out.routesAdded ? `, ${plural(out.routesAdded, 'route')}` : ''}. Undo with Ctrl+Z in the hex view.`, 6000);
+		new Notice(`Hexify: ${plural(out.applied, 'hex', 'hexes')} painted${out.riversAdded ? `, ${plural(out.riversAdded, 'river')}` : ''}${out.routesAdded ? `, ${plural(out.routesAdded, 'route')}` : ''}. Undo with ${MOD}+Z in the hex view.`, 6000);
 		this.close();
 	}
 

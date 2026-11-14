@@ -56,14 +56,20 @@ A campaign made in the HexLore desktop app moves over with that app's
 ## The screen
 
 - **Top bar, left:** fullscreen, the **map menu** (new, open, map settings,
-  import, export), quick jump (Ctrl+K), Adventures and Session notes.
+  import, export), quick jump (Ctrl+K: a hex by name or coordinates such as
+  `F3`, a region, a note), Adventures and Session notes (the newest 10).
+  On macOS, read Cmd for Ctrl throughout.
 - **Top bar, centre:** **Hex** (the map) and **Sketch** (free drawing).
-- **Top bar, right:** undo / redo, reset view (Ctrl+0), **Display &
+- **Top bar, right:** undo / redo (the only pair: in the Sketch view they
+  undo the sketch), reset view (Ctrl+0), **Display &
   overlays**, the **players** button, and the map panel.
 - **Left of the map:** the tool strip and the paint palette.
-- **Right sidebar, Map panel:** the selected hex (its label, notes, who is
+- **Right sidebar, Map panel:** the selected hex (its name, notes, who is
   there), regions, sketch swatches, travel votes.
 - **Left sidebar, Sections:** the folders of notes this campaign uses.
+
+Every button can be reached with **Tab** and pressed with **Enter** or
+**Space**.
 
 Move around with a **middle-drag**, **Space + drag** or a two-finger
 trackpad scroll. Zoom with the **wheel** or a pinch.
@@ -92,7 +98,7 @@ players, draw a thread, and delete. **Map menu → Map** has **Map scale…**,
 
 ## Hexes and notes
 
-Each hex has a **label** (the name players see), at most one **feature**
+Each hex has a **name** (players see it once the hex is revealed), at most one **feature**
 icon, and a list of **notes**.
 
 - Select a hex, then in the Map panel: **New note…** (from a template, into
@@ -112,7 +118,7 @@ icon, and a list of **notes**.
 - Reorder or unlink notes in the Map panel. Unlinking never deletes a note.
   A note that was deleted shows as a dimmed broken link, with *Relink* and
   *Remove*.
-- A note can be linked to several hexes. The label is never taken from a
+- A note can be linked to several hexes. The name is never taken from a
   note's title, so a note called "Cult base (secret)" never reaches players.
 - **Show on the map** (right-click the note, when it is on a hex of an open
   map) centres the map on the hexes of the note; they are highlighted in
@@ -220,17 +226,25 @@ vault; the zoom is per device. Renaming or moving a map keeps its place.
    player view**). A window shows the link, by default `http://127.0.0.1:5174`.
 2. To let players open it on their phones, turn on **Serve on the local
    network** in the players menu. On Windows, allow Obsidian through the
-   firewall on private networks when asked.
+   firewall on private networks when asked. The window then shows a **QR
+   code** players can scan. The status bar shows the link and how many
+   devices are connected.
 3. Reveal hexes with the Fog tool, the hex menu, or **Reveal all / Hide all**
    in the players menu (both ask first). Players see each change within a
    few seconds; Ctrl+Z takes a reveal back.
 4. While the view runs, the players button opens its menu: copy the link, or
    stop.
+5. Players click a hex to vote where the party goes next; votes show on your
+   map and in the Map panel. **Travel** (the footprints beside a vote) asks
+   first, then reveals the hex, alone or with what is in sight (it remembers
+   your last choice), clears the votes and adds "Travelled to F3 (3 votes:
+   …)" to the session note. Undo takes the reveal back.
 
 Players see only the revealed map: terrain, icons and labels that are not
 hidden, and rivers, roads and trails near what they have explored. Notes
-are never served. Players can vote where the party goes next; votes show on
-your map and in the Map panel. Obsidian must stay open while players use it.
+are never served. One device can hold at most 8 voters. The server answers
+only addresses of this computer, so no web page you visit can reach it.
+Obsidian must stay open while players use it.
 
 ## Sketch
 
@@ -276,4 +290,4 @@ The picture can stay as an underlay (Display & overlays).
 
 Maps open and can be read, with two-finger pinch and pan. Editing on a phone
 is untested. The player view and the campaign-folder export need the
-desktop app.
+desktop app: on a phone the players menu has only Reveal all / Hide all.

@@ -7,7 +7,8 @@
 // panel in the sidebar. The tool strip stays on the left of the map. Thin
 // wiring: every action is the host's.
 
-import { setIcon, setTooltip } from 'obsidian';
+import { Platform, setIcon, setTooltip } from 'obsidian';
+import { asButton, keys, setDisabled } from './a11y';
 
 export interface TopBarHost {
 	fullscreen(): boolean;
@@ -61,30 +62,32 @@ export class TopBar {
 		// Left: fullscreen, then the map.
 		this.fullscreenBtn = this.icon(left, 'maximize', '', () => host.toggleFullscreen());
 		this.divider(left);
-		const mapBtn = left.createDiv({ cls: 'hexlore-topbar-button hexlore-topbar-map' });
+		const mapBtn = asButton(left.createDiv({ cls: 'hexlore-topbar-button hexlore-topbar-map' }));
 		setIcon(mapBtn.createSpan({ cls: 'hexlore-topbar-icon' }), 'folder');
 		this.name = mapBtn.createSpan({ cls: 'hexlore-topbar-name' });
 		setIcon(mapBtn.createSpan({ cls: 'hexlore-topbar-caret' }), 'chevron-down');
 		setTooltip(mapBtn, 'Map: new, open, map settings, import, export');
 		mapBtn.addEventListener('click', (e) => host.mapMenu(e));
 		this.divider(left);
-		this.icon(left, 'search', 'Quick jump (Ctrl+K)', () => host.quickJump());
+		this.icon(left, 'search', keys('Quick jump (Mod+K)'), () => host.quickJump());
 		this.needsEditor.push(this.icon(left, 'book-open', 'Adventures', (e) => host.adventuresMenu(e)));
 		this.needsEditor.push(this.icon(left, 'sticky-note', 'Session notes', (e) => host.notesMenu(e)));
 
 		// Centre: which view.
 		const sw = centre.createDiv({ cls: 'hexlore-segments' });
-		this.hexBtn = sw.createDiv({ cls: 'hexlore-segment', text: 'Hex' });
+		this.hexBtn = asButton(sw.createDiv({ cls: 'hexlore-segment', text: 'Hex' }));
 		setTooltip(this.hexBtn, 'The hex map');
 		this.hexBtn.addEventListener('click', () => host.setSketching(false));
-		this.sketchBtn = sw.createDiv({ cls: 'hexlore-segment', text: 'Sketch' });
+		this.sketchBtn = asButton(sw.createDiv({ cls: 'hexlore-segment', text: 'Sketch' }));
 		setTooltip(this.sketchBtn, 'Draw freely over the lattice, then hexify');
-		this.sketchBtn.addEventListener('click', () => host.setSketching(true));
+		this.sketchBtn.addEventListener('click', () => {
+			if (!this.sketchBtn.hasClass('is-disabled')) host.setSketching(true);
+		});
 		this.needsEditor.push(this.sketchBtn);
 
 		// Right: this session.
-		this.undoBtn = this.icon(right, 'undo-2', 'Undo (Ctrl+Z)', () => host.undo());
-		this.redoBtn = this.icon(right, 'redo-2', 'Redo (Ctrl+Shift+Z)', () => host.redo());
+		this.undoBtn = this.icon(right, 'undo-2', keys('Undo (Mod+Z)'), () => host.undo());
+		this.redoBtn = this.icon(right, 'redo-2', keys('Redo (Mod+Shift+Z)'), () => host.redo());
 		this.divider(right);
 		this.icon(right, 'locate-fixed', 'Reset view (fit the map)', () => host.resetView());
 		const display = this.icon(right, 'sliders-horizontal', 'Display and overlays', () => host.toggleDisplay(display));
@@ -94,6 +97,8 @@ export class TopBar {
 		// not cut every player off and drop their votes mid-session.
 		this.playersBtn = this.icon(players, 'cast', '', (e) => (host.playersRunning() ? host.playersMenu(e) : host.togglePlayers()));
 		this.icon(players, 'chevron-down', 'Player options', (e) => host.playersMenu(e)).addClass('is-caret');
+		// A phone cannot serve: only the menu (fog of war) is left.
+		if (!Platform.isDesktopApp) this.playersBtn.hide();
 		this.divider(right);
 		this.icon(right, 'panel-right', 'Show or hide the map panel (the selected hex, its notes, player visibility)', () => host.togglePanel());
 
@@ -103,7 +108,7 @@ export class TopBar {
 	}
 
 	private icon(parent: HTMLElement, icon: string, tip: string, click: (e: MouseEvent) => void): HTMLElement {
-		const b = parent.createDiv({ cls: 'clickable-icon hexlore-topbar-icon-button' });
+		const b = asButton(parent.createDiv({ cls: 'clickable-icon hexlore-topbar-icon-button' }));
 		setIcon(b, icon);
 		if (tip) setTooltip(b, tip);
 		b.addEventListener('click', (e) => {
@@ -121,12 +126,14 @@ export class TopBar {
 		this.name.setText(h.mapName() || 'Map');
 		const sketching = h.sketching();
 		this.hexBtn.toggleClass('is-active', !sketching);
+		this.hexBtn.setAttribute('aria-pressed', String(!sketching));
 		this.sketchBtn.toggleClass('is-active', sketching);
-		for (const b of this.needsEditor) b.toggleClass('is-disabled', !h.hasEditor());
-		this.undoBtn.toggleClass('is-disabled', !h.canUndo());
-		this.redoBtn.toggleClass('is-disabled', !h.canRedo());
-		setTooltip(this.undoBtn, h.undoLabel() ? `Undo ${h.undoLabel()} (Ctrl+Z)` : 'Nothing to undo');
-		setTooltip(this.redoBtn, h.redoLabel() ? `Redo ${h.redoLabel()} (Ctrl+Shift+Z)` : 'Nothing to redo');
+		this.sketchBtn.setAttribute('aria-pressed', String(sketching));
+		for (const b of this.needsEditor) setDisabled(b, !h.hasEditor());
+		setDisabled(this.undoBtn, !h.canUndo());
+		setDisabled(this.redoBtn, !h.canRedo());
+		setTooltip(this.undoBtn, h.undoLabel() ? keys(`Undo ${h.undoLabel()} (Mod+Z)`) : 'Nothing to undo');
+		setTooltip(this.redoBtn, h.redoLabel() ? keys(`Redo ${h.redoLabel()} (Mod+Shift+Z)`) : 'Nothing to redo');
 		const full = h.fullscreen();
 		setIcon(this.fullscreenBtn, full ? 'minimize' : 'maximize');
 		setTooltip(this.fullscreenBtn, full ? 'Leave fullscreen (Esc)' : 'Fullscreen');

@@ -77,6 +77,24 @@ describe('the map store', () => {
 		expect(fs.log).toEqual(['write paint/c_1_0.json']); // the other edit survives
 	});
 
+	it('a flush never writes over a file changed outside whose event has not come yet', async () => {
+		const fs = folder();
+		const { store, events } = await open(fs);
+		store.model.getHex(0, 0)!.name = 'Unsaved';
+		store.markHex(0, 0);
+		// A sync lands while the change event is still batched.
+		const pulled = '[\n  {"q":0,"r":0,"terrain":"sea"}\n]\n';
+		fs.files.set('paint/c_0_0.json', pulled);
+		await store.flush();
+		expect(fs.files.get('paint/c_0_0.json')).toBe(pulled);
+		await store.flush(); // the reload it started
+		expect(store.model.getHex(0, 0)!.terrain).toBe('sea');
+		expect(events).toContainEqual({ kind: 'reloaded', files: [{ chunk: 'c_0_0.json' }], discarded: [{ chunk: 'c_0_0.json' }] });
+		// The batched event arriving afterwards changes nothing more.
+		await store.externalChange(['paint/c_0_0.json']);
+		expect(events.filter((e) => e.kind === 'reloaded')).toHaveLength(1);
+	});
+
 	it('never writes over a file it could not read', async () => {
 		const fs = folder();
 		fs.files.set('rivers/rivers.json', '[ this is not json');

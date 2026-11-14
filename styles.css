@@ -1111,6 +1111,18 @@
 
 /* The player view's "now running" instructions (server/started_modal.ts). */
 
+.hexlore-players-qr {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) 0;
+}
+
+.hexlore-players-qr svg {
+	border-radius: var(--radius-s);
+}
+
 .hexlore-players-link .setting-item-description {
 	font-family: var(--font-monospace);
 	user-select: text;

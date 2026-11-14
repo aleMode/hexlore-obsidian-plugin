@@ -12,6 +12,7 @@ import { hexIdFor } from '../core/hex_data';
 import { DEFAULT_SECTIONS, sectionProblems, type Section } from '../storage/hexmap_index';
 import { sectionsOf, writeSections } from '../storage/index_file';
 import type { HexLoreSettings } from '../settings';
+import { asButton } from './a11y';
 import { KIND_ICON, NewNoteModal } from './inspector_view';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView } from './map_view';
 import { createNote, hexesOfNote, noteKind, notesInFolder, templateFiles } from './vault_notes';
@@ -129,14 +130,14 @@ export class SectionsView extends ItemView {
 			const summary = details.createEl('summary', { cls: 'hexlore-section-head' });
 			summary.createSpan({ cls: 'hexlore-section-name', text: section.name });
 			summary.createSpan({ cls: 'hexlore-section-count', text: String(notes.length) });
-			const add = summary.createDiv({ cls: 'clickable-icon' });
+			const add = asButton(summary.createDiv({ cls: 'clickable-icon' }));
 			setIcon(add, 'file-plus');
 			add.setAttr('aria-label', `New note in ${section.name}`);
 			add.addEventListener('click', (e) => {
 				e.preventDefault();
 				this.newNote(section);
 			});
-			const more = summary.createDiv({ cls: 'clickable-icon' });
+			const more = asButton(summary.createDiv({ cls: 'clickable-icon' }));
 			setIcon(more, 'more-horizontal');
 			more.setAttr('aria-label', 'Section options');
 			more.addEventListener('click', (e) => {

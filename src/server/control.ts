@@ -34,6 +34,12 @@ export class PlayerControl {
 	private revision = 0;
 	private cache: { revision: number; payload: PlayerPayload } | null = null;
 	private statusEl: HTMLElement | null = null;
+	/** Start and stop run one at a time: two quick starts (the file menu on a
+	 *  map still opening, then again) would otherwise bind two servers and
+	 *  orphan the first, listening until Obsidian quits. */
+	private queue: Promise<void> = Promise.resolve();
+	/** Redraws the status bar's connected count while serving. */
+	private ticker = 0;
 	/** The index of the map being served. */
 	file: TFile | null = null;
 	url: string | null = null;
@@ -79,14 +85,28 @@ export class PlayerControl {
 
 	/** Serve [file]'s map (stopping any other). Never throws: a failure is
 	 *  told to the GM, not left in a promise nobody awaits. */
-	async start(file: TFile): Promise<void> {
+	start(file: TFile): Promise<void> {
+		return this.serial(() => this.doStart(file));
+	}
+
+	stop(notify = true): Promise<void> {
+		return this.serial(() => this.doStop(notify));
+	}
+
+	private serial(run: () => Promise<void>): Promise<void> {
+		const next = this.queue.then(run, run);
+		this.queue = next.catch(() => {});
+		return next;
+	}
+
+	private async doStart(file: TFile): Promise<void> {
 		const http = await nodeModule('http');
 		if (!http) {
 			new Notice('The player view needs Obsidian on a computer: phones and tablets cannot run a server.');
 			return;
 		}
 		try {
-			await this.stop(false);
+			await this.doStop(false);
 			const dir = dataFolderOf(this.app, file);
 			const store = await this.stores.acquire(dir, file.basename.replace(/\.hexmap$/, ''));
 			this.store = store;
@@ -101,22 +121,26 @@ export class PlayerControl {
 				assets: PLAYER_ASSETS,
 				payload: () => this.payload(),
 				onVotesChanged: () => this.changed(),
+				hostnames: await hostnames(),
 			});
 			const lan = this.settings().playerLan;
 			const port = await server.start(lan);
 			this.server = server;
 			this.url = `http://${lan ? await lanAddress() : '127.0.0.1'}:${port}`;
 			announcePlayerView(this.app, file.basename.replace(/\.hexmap$/, ''), this.url, lan);
+			this.ticker = window.setInterval(() => this.renderStatus(), 5000);
 		} catch (e) {
-			await this.stop(false);
+			await this.doStop(false);
 			console.error('HexLore: the player view did not start', e);
 			new Notice(`Could not start the player view: ${(e as Error).message}`);
 		}
 		this.changed();
 	}
 
-	async stop(notify = true): Promise<void> {
+	private async doStop(notify: boolean): Promise<void> {
 		const was = this.running;
+		window.clearInterval(this.ticker);
+		this.ticker = 0;
 		await this.server?.stop();
 		this.server = null;
 		for (const u of this.unsub) u();
@@ -167,7 +191,8 @@ export class PlayerControl {
 		}
 		el.show();
 		const n = this.server?.votes.voterCount ?? 0;
-		el.setText(`Players: ${this.url.replace(/^http:\/\//, '')}${n ? ` · ${n} vote${n === 1 ? '' : 's'}` : ''}`);
+		const devices = this.server?.connectedCount() ?? 0;
+		el.setText(`Players: ${this.url.replace(/^http:\/\//, '')} · ${devices} connected${n ? ` · ${n} vote${n === 1 ? '' : 's'}` : ''}`);
 		el.setAttr('aria-label', `Serving “${this.file?.basename.replace(/\.hexmap$/, '') ?? ''}” to players. Click to copy the link.`);
 	}
 
@@ -176,6 +201,13 @@ export class PlayerControl {
 		await this.saveSettings();
 		await this.restart();
 	}
+}
+
+/** This computer's names a player may type instead of its address. */
+async function hostnames(): Promise<string[]> {
+	const os = await nodeModule('os');
+	const name = os?.hostname();
+	return name ? [name, `${name}.local`] : [];
 }
 
 /** Best-effort LAN address: the IPv4 one players on the same network can

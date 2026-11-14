@@ -16,6 +16,7 @@ import { SketchFill, SketchLabel, SketchShape, SketchStroke, UnknownSketchItem, 
 import type { MapEditor } from '../edit/editor';
 import type { MapCanvas } from '../render/map_canvas';
 import { bucketFill, type BucketFillFailure } from '../sketch/bucket_fill';
+import { asButton } from './a11y';
 import { traceBounds, type TraceImage } from './trace_image';
 
 export type SketchTool = 'pan' | 'pen' | 'eraser' | 'bucket' | 'line' | 'rect' | 'ellipse' | 'label';
@@ -185,32 +186,24 @@ export class SketchMode {
 	private buildStrip(): void {
 		const tools = this.strip.createDiv({ cls: 'hexlore-toolbar-group' });
 		for (const t of SKETCH_TOOLS) {
-			const b = tools.createDiv({ cls: 'clickable-icon hexlore-tool' });
+			const b = asButton(tools.createDiv({ cls: 'clickable-icon hexlore-tool' }));
 			setIcon(b, t.icon);
 			setTooltip(b, `${t.label} (${t.key.toUpperCase()})`, { placement: 'right' });
 			b.addEventListener('click', () => this.setPrefs({ tool: t.id }));
 			this.toolButtons.set(t.id, b);
 		}
 		const width = this.strip.createDiv({ cls: 'hexlore-toolbar-group hexlore-brush' });
-		const minus = width.createDiv({ cls: 'clickable-icon' });
+		const minus = asButton(width.createDiv({ cls: 'clickable-icon' }));
 		setIcon(minus, 'minus');
 		setTooltip(minus, 'Thinner ([)', { placement: 'right' });
 		minus.addEventListener('click', () => this.setPrefs({ width: this.prefs.width - (this.prefs.width > 8 ? 2 : 1) }));
 		this.widthValue = width.createDiv({ cls: 'hexlore-brush-value' });
-		const plus = width.createDiv({ cls: 'clickable-icon' });
+		const plus = asButton(width.createDiv({ cls: 'clickable-icon' }));
 		setIcon(plus, 'plus');
 		setTooltip(plus, 'Thicker (])', { placement: 'right' });
 		plus.addEventListener('click', () => this.setPrefs({ width: this.prefs.width + (this.prefs.width >= 8 ? 2 : 1) }));
 		this.swatchRow = this.strip.createDiv({ cls: 'hexlore-toolbar-group hexlore-sketch-swatches' });
-		const history = this.strip.createDiv({ cls: 'hexlore-toolbar-group' });
-		const undo = history.createDiv({ cls: 'clickable-icon' });
-		setIcon(undo, 'undo-2');
-		setTooltip(undo, 'Undo in the sketch (Ctrl+Z)', { placement: 'right' });
-		undo.addEventListener('click', () => this.undo());
-		const redo = history.createDiv({ cls: 'clickable-icon' });
-		setIcon(redo, 'redo-2');
-		setTooltip(redo, 'Redo in the sketch (Ctrl+Shift+Z)', { placement: 'right' });
-		redo.addEventListener('click', () => this.redo());
+		// Undo and redo are the top bar's: in the Sketch view they undo the sketch.
 		this.refreshStrip();
 	}
 
@@ -230,7 +223,7 @@ export class SketchMode {
 			const g = this.swatchRow.createDiv({ cls: 'hexlore-sketch-swatch-group' });
 			setTooltip(g, name, { placement: 'right' });
 			for (const s of list) {
-				const chip = g.createDiv({ cls: 'hexlore-swatch is-small' });
+				const chip = asButton(g.createDiv({ cls: 'hexlore-swatch is-small' }));
 				chip.style.setProperty('--chip', s.color);
 				chip.toggleClass('is-active', s.id === this.prefs.swatchId);
 				setTooltip(chip, `${s.name}${s.kind === 'biome' ? ' (becomes this biome on Hexify)' : s.kind === 'none' ? ' (ink: notes only)' : ' (becomes a line on Hexify)'}`, { placement: 'right' });

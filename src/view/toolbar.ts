@@ -11,6 +11,7 @@ import { setIcon, setTooltip } from 'obsidian';
 import type { Feature, Terrain } from '../core/hex_data';
 import { PaintPick } from '../core/hex_paint';
 import { ART } from '../render/art';
+import { MOD, asButton } from './a11y';
 import { pickPreview, titleCase, type PreviewOf } from './pick_preview';
 
 export type ToolId = 'select' | 'paint' | 'river' | 'thread' | 'region' | 'route' | 'fog' | 'ruler';
@@ -27,9 +28,9 @@ export const TOOLS: ToolInfo[] = [
 	{ id: 'paint', key: '2', icon: 'paintbrush', label: 'Paint terrain and features' },
 	{ id: 'river', key: '3', icon: 'waves', label: 'Rivers: click points, Enter saves' },
 	{ id: 'thread', key: '4', icon: 'spline', label: 'Threads: click a hex, then another' },
-	{ id: 'region', key: '5', icon: 'shapes', label: 'Regions: drag paints the active region, Ctrl-drag removes' },
+	{ id: 'region', key: '5', icon: 'shapes', label: `Regions: drag paints the active region, ${MOD}-drag removes` },
 	{ id: 'route', key: '6', icon: 'route', label: 'Roads and borders: click points, Enter saves' },
-	{ id: 'fog', key: '7', icon: 'eye', label: 'Player fog: drag reveals, Ctrl-drag hides' },
+	{ id: 'fog', key: '7', icon: 'eye', label: `Player fog: drag reveals, ${MOD}-drag hides` },
 	{ id: 'ruler', key: '8', icon: 'ruler', label: 'Ruler' },
 ];
 
@@ -89,10 +90,6 @@ export interface ToolbarHost {
 	setPick(p: PaintPick): void;
 	brush(): number;
 	setBrush(n: number): void;
-	undo(): void;
-	redo(): void;
-	canUndo(): boolean;
-	canRedo(): boolean;
 	readOnly(): boolean;
 	routeKind(): string;
 	setRouteKind(k: string): void;
@@ -103,8 +100,6 @@ export interface ToolbarHost {
 export class Toolbar {
 	readonly el: HTMLElement;
 	private readonly buttons = new Map<ToolId, HTMLElement>();
-	private readonly undoBtn: HTMLElement;
-	private readonly redoBtn: HTMLElement;
 	private readonly brushRow: HTMLElement;
 	private readonly brushValue: HTMLElement;
 	private readonly swatch: HTMLElement;
@@ -125,33 +120,33 @@ export class Toolbar {
 		}
 		const tools = this.el.createDiv({ cls: 'hexlore-toolbar-group' });
 		for (const t of TOOLS) {
-			const b = tools.createDiv({ cls: 'clickable-icon hexlore-tool', attr: { 'data-tool': t.id } });
+			const b = asButton(tools.createDiv({ cls: 'clickable-icon hexlore-tool', attr: { 'data-tool': t.id } }));
 			setIcon(b, t.icon);
 			setTooltip(b, `${t.label} (${t.key})`, { placement: 'right' });
 			b.addEventListener('click', () => host.setTool(t.id));
 			this.buttons.set(t.id, b);
 		}
 		this.brushRow = this.el.createDiv({ cls: 'hexlore-toolbar-group hexlore-brush' });
-		this.swatch = this.brushRow.createDiv({ cls: 'hexlore-pick-swatch clickable-icon' });
+		this.swatch = asButton(this.brushRow.createDiv({ cls: 'hexlore-pick-swatch clickable-icon' }));
 		setTooltip(this.swatch, 'What to paint', { placement: 'right' });
 		this.swatch.addEventListener('click', (e) => {
 			e.stopPropagation();
 			this.togglePalette();
 		});
-		const minus = this.brushRow.createDiv({ cls: 'clickable-icon' });
+		const minus = asButton(this.brushRow.createDiv({ cls: 'clickable-icon' }));
 		setIcon(minus, 'minus');
 		setTooltip(minus, 'Smaller brush ([)', { placement: 'right' });
 		minus.addEventListener('click', () => host.setBrush(host.brush() - 1));
 		this.brushValue = this.brushRow.createDiv({ cls: 'hexlore-brush-value' });
 		setTooltip(this.brushValue, 'Brush radius, in hexes', { placement: 'right' });
-		const plus = this.brushRow.createDiv({ cls: 'clickable-icon' });
+		const plus = asButton(this.brushRow.createDiv({ cls: 'clickable-icon' }));
 		setIcon(plus, 'plus');
 		setTooltip(plus, 'Bigger brush (])', { placement: 'right' });
 		plus.addEventListener('click', () => host.setBrush(host.brush() + 1));
 
 		this.routeRow = this.el.createDiv({ cls: 'hexlore-toolbar-group' });
 		for (const r of ROUTE_KINDS) {
-			const b = this.routeRow.createDiv({ cls: 'clickable-icon' });
+			const b = asButton(this.routeRow.createDiv({ cls: 'clickable-icon' }));
 			setIcon(b, r.icon);
 			setTooltip(b, r.label, { placement: 'right' });
 			b.addEventListener('click', () => host.setRouteKind(r.kind));
@@ -160,20 +155,16 @@ export class Toolbar {
 		this.routeColor = this.routeRow.createEl('input', { type: 'color', cls: 'hexlore-route-color' });
 		setTooltip(this.routeColor, 'Colour of new roads', { placement: 'right' });
 		this.routeColor.addEventListener('change', () => host.setRouteColor(this.routeColor.value.toUpperCase()));
-
-		const history = this.el.createDiv({ cls: 'hexlore-toolbar-group' });
-		this.undoBtn = history.createDiv({ cls: 'clickable-icon' });
-		setIcon(this.undoBtn, 'undo-2');
-		this.undoBtn.addEventListener('click', () => host.undo());
-		this.redoBtn = history.createDiv({ cls: 'clickable-icon' });
-		setIcon(this.redoBtn, 'redo-2');
-		this.redoBtn.addEventListener('click', () => host.redo());
+		// Undo and redo are in the top bar only (one place per action).
 		this.refresh();
 	}
 
-	refresh(undoLabel?: string | null, redoLabel?: string | null): void {
+	refresh(): void {
 		const tool = this.host.tool();
-		for (const [id, b] of this.buttons) b.toggleClass('is-active', id === tool);
+		for (const [id, b] of this.buttons) {
+			b.toggleClass('is-active', id === tool);
+			b.setAttribute('aria-pressed', String(id === tool));
+		}
 		this.brushRow.toggle(tool === 'paint' || tool === 'fog');
 		this.swatch.toggle(tool === 'paint');
 		this.brushValue.setText(String(this.host.brush()));
@@ -181,10 +172,6 @@ export class Toolbar {
 		for (const [k, b] of this.routeButtons) b.toggleClass('is-active', k === this.host.routeKind());
 		this.routeColor.value = this.host.routeColor().toLowerCase();
 		this.renderSwatch();
-		this.undoBtn.toggleClass('is-disabled', !this.host.canUndo());
-		this.redoBtn.toggleClass('is-disabled', !this.host.canRedo());
-		setTooltip(this.undoBtn, undoLabel ? `Undo ${undoLabel} (Ctrl+Z)` : 'Nothing to undo', { placement: 'right' });
-		setTooltip(this.redoBtn, redoLabel ? `Redo ${redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo', { placement: 'right' });
 		this.el.toggleClass('is-read-only', this.host.readOnly());
 	}
 
@@ -228,7 +215,9 @@ export class Toolbar {
 		};
 		const tabs = pal.createDiv({ cls: 'hexlore-palette-tabs', attr: { role: 'tablist' } });
 		for (const [id, label] of PALETTE_TABS) {
-			const t = tabs.createDiv({ cls: 'hexlore-palette-tab', text: label, attr: { role: 'tab' } });
+			const t = asButton(tabs.createDiv({ cls: 'hexlore-palette-tab', text: label }));
+			t.setAttribute('role', 'tab');
+			t.setAttribute('aria-selected', String(id === this.tab));
 			t.toggleClass('is-active', id === this.tab);
 			t.addEventListener('click', () => {
 				this.tab = id;
@@ -238,8 +227,9 @@ export class Toolbar {
 		const grid = pal.createDiv({ cls: 'hexlore-palette-grid' });
 		/** A named tile: a preview (or an icon) over its label. */
 		const tile = (grid: HTMLElement, label: string, active: boolean, pick: () => PaintPick, preview: PreviewOf | string) => {
-			const t = grid.createDiv({ cls: 'hexlore-palette-item' });
+			const t = asButton(grid.createDiv({ cls: 'hexlore-palette-item' }));
 			t.toggleClass('is-active', active);
+			t.setAttribute('aria-pressed', String(active));
 			if (typeof preview === 'string') setIcon(t.createDiv({ cls: 'hexlore-palette-icon' }), preview);
 			else pickPreview(t, preview, 36);
 			t.createDiv({ cls: 'hexlore-palette-label', text: label });
