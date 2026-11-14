@@ -10,5 +10,7 @@ export default defineConfig({
 	},
 	test: {
 		include: ['test/**/*.test.ts'],
+		// The renderer and river-tracer tests take 5–9 s on a busy machine.
+		testTimeout: 60_000,
 	},
 });

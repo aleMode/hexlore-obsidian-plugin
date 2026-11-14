@@ -1,5 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { FORMAT_VERSION } from '../src/core/campaign_meta';
 import { printLayout, printPages } from '../src/core/export_layout';
 import { Hex } from '../src/core/hex';
 import { toPlain, type JsonObject } from '../src/core/json';
@@ -74,6 +75,14 @@ describe('the Players version (secrecy, plan 1.14 / 2.10)', () => {
 		expect(JSON.stringify(data)).not.toContain('Unrevealed secret');
 		expect(JSON.stringify(data)).not.toContain('Dragon lair');
 		expect(JSON.stringify(data)).not.toContain('Cult lands');
+	});
+
+	it('is refused for a map saved by a newer HexLore, as the player server refuses it', () => {
+		// A newer format may carry a rule about what players see that this
+		// build's filter does not apply.
+		const payload = toPlain(filterCampaignForPlayer(gmModel())) as JsonObject;
+		expect(() => playersSceneData(payload, FORMAT_VERSION + 1)).toThrow(/newer HexLore/);
+		expect(() => playersSceneData(payload, FORMAT_VERSION)).not.toThrow();
 	});
 });
 

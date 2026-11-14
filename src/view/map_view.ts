@@ -50,6 +50,8 @@ import { sectionsOf } from '../storage/index_file';
 import { displayIdFor } from '../core/hex';
 import { threadColorGroups } from '../core/overlay_filter';
 import { ImageExportModal } from './image_export_modal';
+import { ConfirmModal } from './inspector_view';
+import { rollRegion } from './encounter_roller';
 import { HexifyModal } from './hexify_modal';
 import { ImportWizard, UNDERLAY_CONFIG } from './import_wizard';
 import { UnderlayConfig } from '../importer/underlay';
@@ -967,22 +969,28 @@ export class MapView extends ItemView {
 				.setTitle('Reveal all hexes to players')
 				.setIcon('eye')
 				.setDisabled(ro)
-				.onClick(() => {
-					const n = this.editor?.setAllRevealed(true) ?? 0;
-					new Notice(`Revealed ${n} hex${n === 1 ? '' : 'es'}.`);
-				}),
+				.onClick(() => this.allFog(true, serving)),
 		);
 		menu.addItem((i) =>
 			i
 				.setTitle('Hide all hexes from players')
 				.setIcon('eye-off')
 				.setDisabled(ro)
-				.onClick(() => {
-					const n = this.editor?.setAllRevealed(false) ?? 0;
-					new Notice(`Hid ${n} hex${n === 1 ? '' : 'es'}.`);
-				}),
+				.onClick(() => this.allFog(false, serving)),
 		);
 		menu.showAtMouseEvent(evt);
+	}
+
+	/** Reveal or hide every hex: asked first (players see it within a poll
+	 *  while served, and a misclick sits next to "Start"); one undo step. */
+	private allFog(reveal: boolean, serving: boolean): void {
+		const go = () => {
+			const n = this.editor?.setAllRevealed(reveal) ?? 0;
+			new Notice(`${reveal ? 'Revealed' : 'Hid'} ${n} hex${n === 1 ? '' : 'es'}. Ctrl+Z undoes it.`);
+		};
+		const what = reveal ? 'Reveal every hex to players?' : 'Hide every hex from players?';
+		const why = serving ? ' Players connected now see it within a few seconds.' : '';
+		new ConfirmModal(this.app, reveal ? 'Reveal all' : 'Hide all', `${what}${why} Undo (Ctrl+Z) puts it back.`, go, reveal ? 'Reveal all' : 'Hide all').open();
 	}
 
 	// ----- editing: state ---------------------------------------------------------
@@ -1053,6 +1061,7 @@ export class MapView extends ItemView {
 		}
 		this.editor?.endStroke();
 		this.editor?.endRegionStroke();
+		this.editor?.endFogStroke();
 		this.gesture = null;
 		this.band = null;
 		this.ruler = null; // the last measurement clears on a tool change
@@ -1494,6 +1503,7 @@ export class MapView extends ItemView {
 		this.gesture = null;
 		if (g?.kind === 'paint') this.editor?.endStroke();
 		if (g?.kind === 'region') this.editor?.endRegionStroke();
+		if (g?.kind === 'fog') this.editor?.endFogStroke();
 		this.band = null;
 		this.stage.removeClass('is-panning');
 		this.canvas.paintOverlay();
@@ -1542,7 +1552,7 @@ export class MapView extends ItemView {
 				case 'fog': {
 					const reveal = !(e.ctrlKey || e.metaKey);
 					this.gesture = { kind: 'fog', id: e.pointerId, last: cell, reveal };
-					if (cell && editor) this.strokeTo(cell, null, (cells) => editor.setRevealed(cells, reveal));
+					if (cell && editor) this.strokeTo(cell, null, (cells) => editor.paintFog(cells, reveal));
 					break;
 				}
 				case 'region': {
@@ -1611,6 +1621,9 @@ export class MapView extends ItemView {
 				case 'paint':
 					this.editor?.endStroke();
 					break;
+				case 'fog':
+					this.editor?.endFogStroke();
+					break;
 				case 'region':
 					this.editor?.endRegionStroke();
 					break;
@@ -1669,7 +1682,7 @@ export class MapView extends ItemView {
 						if (cell && this.editor && (!g.last || cellKeyOf(cell) !== cellKeyOf(g.last))) {
 							const editor = this.editor;
 							if (g.kind === 'paint') this.strokeTo(cell, g.last, (cells) => editor.paint(cells, this.pick));
-							else if (g.kind === 'fog') this.strokeTo(cell, g.last, (cells) => editor.setRevealed(cells, g.reveal));
+							else if (g.kind === 'fog') this.strokeTo(cell, g.last, (cells) => editor.paintFog(cells, g.reveal));
 							else if (this.activeRegion) {
 								const rid = this.activeRegion;
 								this.strokeTo(cell, g.last, (cells) => editor.paintRegion(rid, cells, g.add), 0);
@@ -2141,6 +2154,7 @@ export class MapView extends ItemView {
 			style: this.canvas.style,
 			blend: this.canvas.blend,
 			revealed: m.revealed.size,
+			format: m.meta.format,
 			makeSurface,
 		}).open();
 	}
@@ -2615,6 +2629,19 @@ export class MapView extends ItemView {
 					.setIcon('shapes')
 					.setDisabled(ro)
 					.onClick(() => editor.removeRegionCells(g.id, cells)),
+			);
+		}
+		// Rolling for where the party is: each region here with a note.
+		const index = this.file;
+		const rollable = index ? editor.regionsContaining(cells).filter((g) => this.regionLinks.get(g.id)?.[0]) : [];
+		if (index && rollable.length) menu.addSeparator();
+		for (const g of rollable) {
+			const region = { id: g.id, name: g.name || 'Untitled', link: this.regionLinks.get(g.id)![0]! };
+			menu.addItem((i) =>
+				i
+					.setTitle(`Roll encounter: ${region.name}`)
+					.setIcon('dices')
+					.onClick(() => void rollRegion(this.app, index!, region).then((r) => r && this.broadcast())),
 			);
 		}
 		menu.showAtMouseEvent(e);

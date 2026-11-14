@@ -143,6 +143,30 @@ describe('the side views', () => {
 	});
 });
 
+describe('encounters from the panel', () => {
+	it('rolls the active region, keeps the roll, and adds it to the session note', async () => {
+		const panel = app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0]!.view as unknown as InspectorView;
+		app.workspace.activeLeaf = mapLeaf;
+		app.workspace.trigger('active-leaf-change', mapLeaf);
+		(map as unknown as { setSelection(c: string[]): void }).setSelection([]);
+		map.setActiveRegion('region_001');
+		await tick(20);
+		const roll = Array.from(panel.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Roll')!;
+		roll.click();
+		await tick(20);
+		expect(Notice.log.at(-1)).toMatch(/^Encounter: North: Wolves \(d6 \d\)/);
+		expect(panel.contentEl.textContent).toContain('Rolls this session');
+		// No encounter-chance in the fixture's note: the check says how to add one.
+		Array.from(panel.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Check')!.click();
+		await tick(20);
+		expect(Notice.log.at(-1)).toMatch(/encounter-chance: 2/);
+		panel.contentEl.querySelector<HTMLElement>('.hexlore-roll-row [aria-label^="Add to"]')!.click();
+		await tick(20);
+		expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n- \d\d:\d\d · North: Wolves \(d6 \d\)\n$/);
+		map.setActiveRegion(null);
+	});
+});
+
 describe('notes from the panel', () => {
 	it('"New note…" creates, links and opens a note', async () => {
 		const panel = app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0]!.view as unknown as InspectorView;

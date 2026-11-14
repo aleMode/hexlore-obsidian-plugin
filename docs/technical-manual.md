@@ -73,7 +73,7 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 | `src/render/` | The renderer. `scene.ts` (render model + caches), `painter.ts` (paints a scene rect), `tiles.ts` + `map_canvas.ts` (tiled pan, stretched zoom), `textures.ts` (atlas pages for sprites and texture slices), `art.ts` (the art registry), `vendor.ts` (loads the vendored JS spec and tables), `image_export.ts`, `players_scene.ts`. |
 | `src/edit/` | Editing without Obsidian: `editor.ts` (every map change), `undo.ts`, `editors.ts` (one editor per store). |
 | `src/view/` | Obsidian views and UI: `map_view.ts` (the map), `top_bar.ts`, `toolbar.ts`, `display_panel.ts`, `inspector_view.ts` (the Map panel), `open_note.ts` (a note opened from the map: Page preview's window via `hover-link`, or a pane), `sections_view.ts`, `sketch_mode.ts`, `import_wizard.ts`, modals. |
-| `src/notes/` | Note conventions (`note_meta.ts`: kinds, `location`, templates, which hexes a note stands for), NPC page sections. |
+| `src/notes/` | Note conventions (`note_meta.ts`: kinds, `location`, templates, which hexes a note stands for), encounter tables (`encounter_table.ts`), NPC page sections. |
 | `src/server/` | The player server (`player_server.ts`, Node `http` passed in), its Obsidian side (`control.ts`), the player page assets. |
 | `src/convert/` | "Export as a campaign folder…": `flutter_export.ts` (pure planner), `write.ts` (Node `fs`), `export_command.ts`. |
 | `src/importer/` | Port of Flutter's importer on plain RGBA rasters. |
@@ -199,7 +199,17 @@ are kept (`extra` / `raw`) and written back.
   (`{{title}}`, `{{hex}}`, `{{map}}`, `{{date}}`, `{{time}}`). A note stands
   for the hexes that list it plus the hexes that list its places.
 - Sections are `{name, folder, template?}` in the index frontmatter, one per
-  folder tree, no nesting.
+  folder tree, no nesting. Their folders and templates are vault paths,
+  which Obsidian does not update: `main.ts` rewrites them on a rename
+  (`sectionsAfterRename`, one rename at a time, worked out from the
+  frontmatter as it is when written, since a folder rename fires an event
+  per file inside it).
+- Encounters: `notes/encounter_table.ts` (pure) reads a region note's tables
+  and rolls them; `view/encounter_roller.ts` rolls from the panel and the hex
+  menu, keeps the session's rolls per map (memory only) and appends to the
+  session note (the newest note in GM notes). Flutter's simpler reader is
+  ported unchanged as `core/region_encounters.ts` for the conformance
+  fixtures and is not used by the views (software_hexlore#7).
 
 ## 9. Player server
 
@@ -208,7 +218,8 @@ are kept (`extra` / `raw`) and written back.
 and `POST /api/vote` (travel votes, in memory). Ports 5174–5180, localhost
 unless "Serve on the local network" is on. `control.ts` serves one map at a
 time from its **live** store model, refuses a newer format (503) and reports
-a failed start to the GM. The filter is the ONLY path to players, and it is
+a failed start to the GM. The Players image export refuses a newer format
+the same way, in `render/players_scene.ts`. The filter is the ONLY path to players, and it is
 map-only: notes are never read.
 
 ## 10. Exports, sketch, importer

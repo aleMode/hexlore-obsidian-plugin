@@ -78,12 +78,12 @@ trackpad scroll. Zoom with the **wheel** or a pinch.
 | 4 | **Thread** | Click a hex, then another: a plot thread only you can see. |
 | 5 | **Region** | Drag to paint hexes into the active region; Ctrl+drag removes. |
 | 6 | **Route** | Roads, trails and borders. Enter saves. Borders stay hidden from players. |
-| 7 | **Fog** | Drag to reveal hexes to players; Ctrl+drag hides them. |
+| 7 | **Fog** | Drag to reveal hexes to players; Ctrl+drag hides them. Ctrl+Z undoes a drag. |
 | 8 | **Ruler** | Measure a distance (set the scale in **Map scale…**). |
 
 Select a river or road to edit it point by point; a river's width is in its
 right-click menu. **Undo** (Ctrl+Z) and **redo** (Ctrl+Shift+Z) cover map
-edits; two views of the same map share one history.
+edits, fog of war included; two views of the same map share one history.
 
 The hex menu (right-click) has rename, cut / copy / paste, reveal or hide
 for players, **reveal + line of sight**, hide the feature and name from
@@ -142,8 +142,43 @@ Templates can use `{{title}}`, `{{hex}}`, `{{map}}`, `{{date}}` and
 ### Regions
 
 Create a region in the Map panel (**New region…**) and paint it with the
-Region tool. Link a note to it; an `## Encounters` list or dice table in
-that note is rolled with **Roll**.
+Region tool. Link a note to it (or **Create** one): its encounters are
+rolled from there, with **Roll** in the Map panel or **Roll encounter** in
+the right-click menu of any hex in the region.
+
+The note's `## Encounters` section can be a table or a list:
+
+```
+---
+encounter-chance: 2 in 6
+---
+## Encounters
+### Day
+| 2d6 | Encounter |
+|---|---|
+| 2 | Dragon |
+| 3-6 | 1d4+1 wolves |
+| 7-12 | Merchants |
+### Night
+- 3x Ghouls
+- Will-o'-wisp
+  - leads travellers into the bog
+```
+
+- A table is rolled on the die in its header (`d6`, `2d6`, `d100` or `d%`,
+  `d66`); `96-00` and `12+` work as on paper. Further columns are kept.
+- A list is rolled with weights (`3x Ghouls`, `3: Ghouls`) or ranges
+  (`1-2: Wolves`); an indented bullet is detail of the entry above it.
+- Each sub-heading (Day, Night…) is a table of its own: pick it next to
+  **Roll**.
+- Dice in a result ("1d4+1 wolves", or Dice Roller's `` `dice: 2d6` ``) are
+  rolled too.
+- **Check** rolls `encounter-chance` (`2` means 2 in 6; `1 in 8` works) and
+  the table when it hits.
+
+The session's rolls stay listed under the regions: copy one, add it to the
+session note (the newest note in the **GM notes** section), or roll that
+table again.
 
 ## Display & overlays
 
@@ -187,7 +222,10 @@ vault; the zoom is per device. Renaming or moving a map keeps its place.
    network** in the players menu. On Windows, allow Obsidian through the
    firewall on private networks when asked.
 3. Reveal hexes with the Fog tool, the hex menu, or **Reveal all / Hide all**
-   in the players menu. Players see each change within a few seconds.
+   in the players menu (both ask first). Players see each change within a
+   few seconds; Ctrl+Z takes a reveal back.
+4. While the view runs, the players button opens its menu: copy the link, or
+   stop.
 
 Players see only the revealed map: terrain, icons and labels that are not
 hidden, and rivers, roads and trails near what they have explored. Notes

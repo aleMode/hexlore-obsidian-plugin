@@ -80,6 +80,46 @@ describe('renaming in the vault', () => {
 		await stores.release(DATA); // released under the name it was acquired by
 	});
 
+	it('sections follow a renamed map folder, section folder or template', async () => {
+		const index = 'Purezza/Purezza.hexmap.md';
+		const files: Record<string, string> = {
+			[index]: [
+				'---',
+				'hexlore-plugin: map',
+				'sections:',
+				'  - {"name": "Places", "folder": "Purezza/10 Places"}',
+				'  - {"name": "NPCs", "folder": "Purezza/30 NPCs", "template": "Purezza/Templates/NPC.md"}',
+				'  - {"name": "Shared", "folder": "Shared"}',
+				'---',
+				'',
+				'## Hexes',
+				'',
+			].join('\n'),
+			'Purezza/10 Places/Fort.md': '# Fort',
+			'Purezza/30 NPCs/Hermit.md': '# Hermit',
+			'Purezza/Templates/NPC.md': '# {{title}}',
+			'Shared/Smith.md': '# Smith',
+		};
+		for (const [rel, text] of encodeAll(fixtureMap())) files[`Purezza/Purezza.hexlore/${rel}`] = text;
+		const app = new App(files);
+		useApp(app);
+		await loaded(app);
+		// The whole map folder moves: one event for it, then one per file inside.
+		await app.vault.rename(app.vault.getAbstractFileByPath('Purezza')!, 'Campaigns/Purezza');
+		await settle();
+		let text = app.vault.textOf('Campaigns/Purezza/Purezza.hexmap.md')!;
+		expect(text).toContain('"folder":"Campaigns/Purezza/10 Places"');
+		expect(text).toContain('"folder":"Campaigns/Purezza/30 NPCs"');
+		expect(text).toContain('"template":"Campaigns/Purezza/Templates/NPC.md"');
+		expect(text).toContain('"folder":"Shared"');
+		// One section folder renamed.
+		await app.vault.rename(app.vault.getAbstractFileByPath('Campaigns/Purezza/10 Places')!, 'Campaigns/Purezza/10 Luoghi');
+		await settle();
+		text = app.vault.textOf('Campaigns/Purezza/Purezza.hexmap.md')!;
+		expect(text).toContain('"folder":"Campaigns/Purezza/10 Luoghi"');
+		expect(text).toContain('"folder":"Campaigns/Purezza/30 NPCs"');
+	});
+
 	it('a renamed index gets the data: value that keeps its map', async () => {
 		const app = vault();
 		await loaded(app);

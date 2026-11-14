@@ -4,6 +4,8 @@ import { fileMenu, ribbonMenu, type MenuActions } from './plugin_menus';
 import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
+import { readSections, sectionsAfterRename, sectionsFrontmatter } from './storage/hexmap_index';
+import { sectionsOf } from './storage/index_file';
 import { StoreRegistry } from './storage/store_registry';
 import { renamePaths, type AtlasLayout } from './view/atlas_layout';
 import { ATLAS_VIEW, AtlasPickerModal, AtlasView } from './view/atlas_view';
@@ -19,6 +21,7 @@ export default class HexLorePlugin extends Plugin {
 	private asMarkdown = new Set<string>();
 
 	private stores!: StoreRegistry;
+	private sectionRenames: Promise<void> = Promise.resolve();
 	players!: PlayerControl;
 
 	async onload() {
@@ -87,6 +90,12 @@ export default class HexLorePlugin extends Plugin {
 		// Renaming the data folder, or the index, must not cut the link between
 		// them: `data:` is a plain relative path Obsidian does not update.
 		this.registerEvent(this.app.vault.on('rename', (f, old) => void this.followDataRename(f, old)));
+		// Section folders and templates are vault paths: they follow too.
+		this.registerEvent(this.app.vault.on('rename', (f, old) => {
+			// One at a time: a folder rename fires an event per file inside, and two
+			// overlapping frontmatter writes would undo each other.
+			this.sectionRenames = this.sectionRenames.then(() => this.followSectionRename(old, f.path));
+		}));
 		// "Show maps together" keeps its maps by index path: it follows them.
 		this.registerEvent(
 			this.app.vault.on('rename', (f, old) => {
@@ -207,6 +216,27 @@ export default class HexLorePlugin extends Plugin {
 			if (!fix) continue;
 			if ('problem' in fix) new Notice(fix.problem, 15000);
 			else await this.app.fileManager.processFrontMatter(idx, (fm: Record<string, unknown>) => (fm.data = fix.data));
+		}
+	}
+
+	/** Every map whose sections name [from] (or a path under it) now names
+	 *  [to]. A folder rename fires one event per file inside it before the
+	 *  metadata cache has caught up, so the cache only picks the maps; the
+	 *  new list is worked out from the frontmatter as it is when written. */
+	private async followSectionRename(from: string, to: string): Promise<void> {
+		for (const idx of this.app.vault.getMarkdownFiles()) {
+			if (!isMapIndex(this.app, idx)) continue;
+			const cached = sectionsOf(this.app, idx);
+			if (!cached || !sectionsAfterRename(cached, from, to)) continue;
+			try {
+				await this.app.fileManager.processFrontMatter(idx, (fm: Record<string, unknown>) => {
+					const now = readSections(fm);
+					const next = now && sectionsAfterRename(now, from, to);
+					if (next) fm.sections = sectionsFrontmatter(next);
+				});
+			} catch (e) {
+				console.error('HexLore: could not update the sections of', idx.path, e);
+			}
 		}
 	}
 

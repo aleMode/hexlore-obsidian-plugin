@@ -257,7 +257,7 @@ export class MapEditor {
 		return name;
 	}
 
-	// ----- player fog (not undoable, decision 9) ----------------------------------
+	// ----- player fog (undoable in the plugin; Flutter's decision 9 is not) ----------
 
 	isRevealed(q: number, r: number): boolean {
 		return this.model.revealed.has(hexIdFor(q, r));
@@ -268,9 +268,48 @@ export class MapEditor {
 		return cells.length > 0 && cells.every(([q, r]) => this.isRevealed(q, r));
 	}
 
-	/** Reveal or hide [cells] to players, clamped to the grid. Returns the
-	 *  cells that changed. */
-	setRevealed(cells: Cell[], reveal: boolean): Cell[] {
+	/** Reveal or hide [cells] to players, clamped to the grid: ONE undo entry
+	 *  (the plugin makes fog undoable, unlike Flutter's decision 9: a slip
+	 *  reaches players within a poll). Returns the cells that changed. */
+	setRevealed(cells: Cell[], reveal: boolean, label?: string): Cell[] {
+		const changed = this.applyRevealed(cells, reveal);
+		if (changed.length) this.pushFog(changed, reveal, label);
+		return changed;
+	}
+
+	/** Reveal or hide [cells] as part of a fog-brush drag; [endFogStroke]
+	 *  seals the drag as one undo entry. */
+	paintFog(cells: Cell[], reveal: boolean): Cell[] {
+		if (this.fogStroke && this.fogStroke.reveal !== reveal) this.endFogStroke();
+		const changed = this.applyRevealed(cells, reveal);
+		if (changed.length) {
+			this.fogStroke ??= { reveal, cells: new Map() };
+			for (const c of changed) this.fogStroke.cells.set(`${c[0]},${c[1]}`, c);
+		}
+		return changed;
+	}
+
+	endFogStroke(): void {
+		const s = this.fogStroke;
+		this.fogStroke = null;
+		if (s?.cells.size) this.pushFog([...s.cells.values()], s.reveal);
+	}
+
+	private fogStroke: { reveal: boolean; cells: Map<string, Cell> } | null = null;
+
+	private pushFog(changed: Cell[], reveal: boolean, label?: string): void {
+		const cells = changed.map(([q, r]): Cell => [q, r]);
+		const n = cells.length;
+		this.undo.push({
+			label: label ?? `${reveal ? 'Reveal' : 'Hide'} ${n} hex${n === 1 ? '' : 'es'}`,
+			touches: new Set([LAYER_FILES.revealed]),
+			run: () => void this.applyRevealed(cells, reveal),
+			undo: () => void this.applyRevealed(cells, !reveal),
+		});
+		this.pushed();
+	}
+
+	private applyRevealed(cells: Cell[], reveal: boolean): Cell[] {
 		if (this.readOnly) return [];
 		const changed: Cell[] = [];
 		for (const [q, r] of cells) {
@@ -1122,7 +1161,7 @@ export class MapEditor {
 		const g = this.model.meta.grid;
 		const [x, y, w, h] = gridPixelBounds(g);
 		const cells = [...cellsInRect(x, y, x + w, y + h, g)] as Cell[];
-		return this.setRevealed(cells, reveal).length;
+		return this.setRevealed(cells, reveal, reveal ? 'Reveal all hexes' : 'Hide all hexes').length;
 	}
 
 	// ----- import / hexify (decisions 12b, 19) ------------------------------------------------

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SECTIONS, REGIONS, parseHexList, parseLinks, readSections, remapHexLinks, sectionProblems, writeHexList, writeLinks } from '../src/storage/hexmap_index';
+import { DEFAULT_SECTIONS, REGIONS, parseHexList, parseLinks, readSections, remapHexLinks, sectionProblems, sectionsAfterRename, writeHexList, writeLinks } from '../src/storage/hexmap_index';
 
 const INDEX = `---
 hexlore-plugin: map
@@ -91,6 +91,27 @@ Keep me.
 		expect(readSections({})).toBeNull();
 		expect(sectionProblems([...DEFAULT_SECTIONS])).toEqual([]);
 		expect(sectionProblems([{ name: 'A', folder: 'X' }, { name: 'B', folder: 'X/Y' }])[0]).toMatch(/nested/);
+	});
+
+	it('follows a renamed or moved folder, and a renamed template', () => {
+		const sections = [
+			{ name: 'Places', folder: 'Purezza/10 Places' },
+			{ name: 'NPCs', folder: 'Purezza/30 NPCs', template: 'Purezza/Templates/NPC.md' },
+			{ name: 'Shared', folder: 'Shared NPCs' },
+		];
+		// The map's folder renamed: every section inside it follows.
+		expect(sectionsAfterRename(sections, 'Purezza', 'Campaigns/Purezza')).toEqual([
+			{ name: 'Places', folder: 'Campaigns/Purezza/10 Places' },
+			{ name: 'NPCs', folder: 'Campaigns/Purezza/30 NPCs', template: 'Campaigns/Purezza/Templates/NPC.md' },
+			{ name: 'Shared', folder: 'Shared NPCs' },
+		]);
+		// One section folder renamed.
+		expect(sectionsAfterRename(sections, 'Purezza/10 Places', 'Purezza/10 Luoghi')![0]).toEqual({ name: 'Places', folder: 'Purezza/10 Luoghi' });
+		// The template note renamed.
+		expect(sectionsAfterRename(sections, 'Purezza/Templates/NPC.md', 'Purezza/Templates/Person.md')![1]!.template).toBe('Purezza/Templates/Person.md');
+		// A name that only starts the same is not inside it; nothing moved: null.
+		expect(sectionsAfterRename(sections, 'Purezza/10 Place', 'X')).toBeNull();
+		expect(sectionsAfterRename(sections, 'Elsewhere', 'Other')).toBeNull();
 	});
 
 	it('keeps region notes in their own section, beside the hexes', () => {

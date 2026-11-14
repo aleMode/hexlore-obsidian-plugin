@@ -4,6 +4,7 @@
 // model: what the filter did not serve cannot be drawn. No region, thread,
 // border, note or badge exists here to leak.
 
+import { FORMAT_VERSION } from '../core/campaign_meta';
 import { isFeature, isTerrain, terrainColors } from '../core/hex_data';
 import type { JsonObject } from '../core/json';
 import type { Anchor, MapData, SceneHex } from './scene';
@@ -13,8 +14,11 @@ const num = (v: unknown, d = 0) => (typeof v === 'number' ? v : d);
 const text = (v: unknown) => (typeof v === 'string' ? v : '');
 
 /** [payload] (the `/api/map` body, as filterCampaignForPlayer builds it,
- *  through toPlain). */
+ *  through toPlain). Throws for a map saved by a newer HexLore ([format]
+ *  past this build's), as the player server refuses to serve one: a newer
+ *  format may add a rule about what players see that this filter lacks. */
 export function playersSceneData(payload: JsonObject, format: number): MapData {
+	if (format > FORMAT_VERSION) throw new Error(`the map was saved by a newer HexLore (format ${format}); the Players version is refused so nothing secret leaks`);
 	const grid = payload.grid as JsonObject;
 	const hexes: SceneHex[] = [];
 	for (const raw of payload.hexes as JsonObject[]) {

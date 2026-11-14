@@ -27,6 +27,16 @@ entries go under *Unreleased*; a release moves them under its version.
   hexes) laid over one another at their real sizes, each fading in as you
   zoom to its level. GM only and read-only; drag and resize maps into place
   when unlocked.
+- Encounters: **Check** rolls the region's encounter chance
+  (`encounter-chance: 2` in its note's properties = 2 in 6) and the table on
+  a hit; tables are rolled on the die in their header (2d6, d100, d66…),
+  sub-headings (Day / Night) are tables to pick from, dice inside a result
+  ("1d4+1 goblins", `dice: 2d6`) are rolled, and indented bullets show as
+  detail. The rolls of the session stay listed in the map panel: copy one,
+  add it to the session note (the newest note in GM notes), roll it again.
+  **Roll encounter** in a hex's right-click menu rolls for its region.
+- Fog of war can be undone: a fog-brush drag, reveal / hide, reveal + line of
+  sight, reveal all and hide all are each one undo step.
 
 ### Changed
 - Renderer: tiles, atlas, redraws limited to what an edit touched
@@ -54,7 +64,21 @@ entries go under *Unreleased*; a release moves them under its version.
 - Clicking a hex shows the map panel if it is closed or behind another tab
   (setting "Show the map panel when a hex is clicked").
 
+- Reveal all / Hide all ask first, and say when connected players will see
+  it.
+- While the player view runs, clicking the players button opens its menu
+  (copy the link, stop) instead of stopping at once and dropping the votes.
+
 ### Fixed
+- Encounter tables were rolled on the width of each range: a 2d6 table gave
+  its 2 and 12 three times their odds, `96-00` on a d100 counted as one,
+  `- 3 xorn` lost its "x", a day/night table read as nothing, and a nested
+  bullet became an encounter.
+- Renaming or moving a map's folder, a section folder or a section's
+  template left the sections pointing at the old place (empty lists, and new
+  notes recreated the old folder). They now follow.
+- The Players image export refuses a map saved by a newer HexLore, as the
+  player view already did, so a secret it might not know about cannot leak.
 - Paint palette: the preview hexes were pinned to the corner of the strip and
   of the palette, one on top of the other: the strip's swatch hid the Select
   tool and the palette's tiles showed no preview. Each now sits in its place,
