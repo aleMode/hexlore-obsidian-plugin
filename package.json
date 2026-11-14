@@ -1,6 +1,6 @@
 {
 	"name": "hexlore-obsidian",
-	"version": "0.0.1",
+	"version": "1.0.0",
 	"private": true,
 	"description": "HexLore for Obsidian: hex-crawl map builder, viewer and player server",
 	"main": "main.js",
