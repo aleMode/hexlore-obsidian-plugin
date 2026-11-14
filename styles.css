@@ -19,7 +19,7 @@
 	cursor: default;
 }
 
-/* !important: the Sketch view sets its tool's cursor inline. */
+/* !important: over the Sketch view's tool cursor (.hexlore-cursor-*). */
 .hexlore-map-stage.is-space-pan {
 	cursor: grab !important;
 }
@@ -653,6 +653,23 @@
 
 .hexlore-map-stage.is-sketching.hide-ghost canvas:not(.hexlore-sketch-canvas) {
 	opacity: 0;
+}
+
+/* The Sketch view's tool cursor (sketch_mode.ts `applyVisibility`). */
+.hexlore-map-stage.hexlore-cursor-grab {
+	cursor: grab;
+}
+
+.hexlore-map-stage.hexlore-cursor-text {
+	cursor: text;
+}
+
+.hexlore-map-stage.hexlore-cursor-cell {
+	cursor: cell;
+}
+
+.hexlore-map-stage.hexlore-cursor-crosshair {
+	cursor: crosshair;
 }
 
 .hexlore-sketch-swatches {

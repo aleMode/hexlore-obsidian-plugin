@@ -7,6 +7,12 @@ entries go under *Unreleased*; a release moves them under its version.
 
 ## [Unreleased]
 
+### Changed
+- HexLore is now a desktop-only plugin (Windows, macOS, Linux), as the
+  community directory requires of a plugin with a local web server and file
+  export. It no longer installs on phones and tablets.
+- Published under the GNU General Public License v3.0 or later.
+
 ### Added
 - The map view for `.hexmap.md` notes: tools 1–8, Clean and Illustrated
   styles, undo, cut / copy / paste, map scale, resize, explode.

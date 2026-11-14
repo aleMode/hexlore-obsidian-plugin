@@ -177,7 +177,9 @@ export class SketchMode {
 		this.strip.toggle(this.active);
 		this.host.stage.toggleClass('is-sketching', this.active);
 		this.host.stage.toggleClass('hide-ghost', this.active && !this.prefs.showGhost);
-		this.host.stage.style.cursor = this.active ? (this.prefs.tool === 'pan' ? 'grab' : this.prefs.tool === 'label' ? 'text' : this.prefs.tool === 'bucket' ? 'cell' : 'crosshair') : '';
+		// The tool's cursor is a class (styles.css), never an inline style.
+		const cursor = this.prefs.tool === 'pan' ? 'grab' : this.prefs.tool === 'label' ? 'text' : this.prefs.tool === 'bucket' ? 'cell' : 'crosshair';
+		for (const c of ['grab', 'text', 'cell', 'crosshair']) this.host.stage.toggleClass(`hexlore-cursor-${c}`, this.active && c === cursor);
 		if (!this.active) this.hint.hide();
 	}
 

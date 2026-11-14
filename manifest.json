@@ -3,7 +3,8 @@
 	"name": "HexLore",
 	"version": "0.0.1",
 	"minAppVersion": "1.13.0",
-	"description": "Hex-crawl map builder, viewer and player server for a GM's campaign notes.",
+	"description": "Build hex-crawl maps linked to your campaign notes and show players a live map in their browser that reveals only what they have found.",
 	"author": "aleMode",
-	"isDesktopOnly": false
+	"authorUrl": "https://github.com/aleMode",
+	"isDesktopOnly": true
 }
