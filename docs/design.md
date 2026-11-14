@@ -30,8 +30,14 @@ records, copied into `vendor/docs/decisions/` (index in its `README.md`).
   wikilink strip/rename), `document_view.dart`, the git-host backup (`lib/sync/`;
   the vault is synced by git), write-behind (decision 26), and the GDK stylus hook
   (decision 18; the browser delivers pressure).
-- **Mobile comes later.** The plugin does not declare itself desktop-only:
-  desktop-only modules (the server, the importer's Ollama) load lazily.
+- **Desktop only (2026-11-14).** The manifest declares `isDesktopOnly: true`:
+  the community directory's *Submission requirements* say a plugin using
+  Node.js APIs "**must**" (V9), and the player server and the campaign-folder
+  export do. Rejected: keeping it installable on mobile with the Node parts
+  behind `desktop.ts` (the map read well on a tablet), since the rule admits
+  no exception. Node modules still load lazily, only through `desktop.ts`
+  (esbuild must not keep a bare `import('http')`), so mobile can come back if
+  the Node features ever move to a desktop-only companion plugin.
 - **Rule for the port:** Obsidian and the platform decide **how** data is stored
   and drawn. They do not decide **what** the data is. The model (axial ids, anchors,
   layers, the player filter) stays identical, because it is the contract between
@@ -459,10 +465,13 @@ stand-in for Obsidian.
   art tables as fixed scripts. Serving them as data needs `player.js` to take
   its tables from the server, a change made in the Flutter repository first.
 - **The Ollama classifier** (item 2.9): optional, desktop only.
-- **Mobile:** reading the map works, with two-finger pinch and pan. Editing on
-  a phone is untested.
-- **Publishing** (item 2.11): a licence (`package.json` says `UNLICENSED`),
-  the repository name (Q10), a release, then the community directory (V9).
+- **Mobile:** out while the plugin is desktop only (§1.1). Two-finger pinch
+  and pan stay, for touch screens on desktop.
+- **Publishing** (item 2.11): done in the repository: GPL-3.0-or-later
+  `LICENSE`, credits in the README, the manifest description and
+  `isDesktopOnly` to the directory's rules (V9). Left: the repository made
+  public, the 1.0.0 release, the submission at community.obsidian.md and its
+  automated review.
 
 ### Deferred, outside both steps
 
@@ -483,7 +492,7 @@ stand-in for Obsidian.
 | V6 | `Vault.append` exists | an append-only sketch file, as an optimisation only | 2.8 |
 | V7 | The Dart perfect-freehand port: licence, maintenance, quality | item 1.8 | 1.8 |
 | V8 | Pen pressure reaches Obsidian on Windows with Windows Ink | the sketch | 2.0 |
-| V9 | Community review policy for plugins with a LAN server. **Checked 2026-11-14** (obsidian-developer-docs, *Community directory*): no rule against a local server; "network use" and "accessing files outside of Obsidian vaults" are allowed "if clearly indicated in your README" (done: README, *Network use*). But *Submission requirements* says a plugin using Node.js APIs (`fs`, `os`…) "**must** set `isDesktopOnly` to `true`", which this plugin does not (§1.2: maps readable on mobile). Open: set it, or ask the reviewers whether lazy loading through `desktop.ts` is accepted | publishing only | 2.11 |
+| V9 | Community review policy for plugins with a LAN server. **Checked 2026-11-14** (obsidian-developer-docs, *Community directory*): no rule against a local server; "network use" and "accessing files outside of Obsidian vaults" are allowed "if clearly indicated in your README" (done: README, *Network use*). But *Submission requirements* says a plugin using Node.js APIs (`fs`, `os`…) "**must** set `isDesktopOnly` to `true`", so the plugin now does (§1.1, 2026-11-14). Also from *Submission requirements*: description ≤ 250 characters, starting with a verb, ending with a period; no plugin id in command ids; a `LICENSE` file (*Developer policies*). All met | publishing only | 2.11 |
 | V10 | Licence and quality of Flutter's `pdf` package, and of pdf-lib / jsPDF | the PDF export | 1.14 / 2.10 |
 
 ---

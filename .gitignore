@@ -25,3 +25,6 @@ test-vault
 
 # Obsidian's state, if the repository root is ever opened as a vault.
 .obsidian/
+
+# Chromium / Electron crash-reporter output
+debug.log

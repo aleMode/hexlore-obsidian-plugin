@@ -16,7 +16,7 @@
 		"check": "npm run lint && npm test && npm run build"
 	},
 	"keywords": [],
-	"license": "UNLICENSED",
+	"license": "GPL-3.0-or-later",
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
 		"@types/node": "^22.15.17",

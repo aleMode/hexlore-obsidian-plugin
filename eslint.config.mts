@@ -1,4 +1,5 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
+import { DEFAULT_BRANDS } from 'eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js';
 import globals from 'globals';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
@@ -35,6 +36,12 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		// The product name keeps its casing (as the recommended config, plus it).
+		rules: {
+			'obsidianmd/ui/sentence-case': ['warn', { enforceCamelCaseLower: true, brands: [...DEFAULT_BRANDS, 'HexLore'] }],
+		},
+	},
 	{
 		// Tests run under node, never inside Obsidian.
 		files: ['test/**/*.ts'],

@@ -8,21 +8,24 @@ notes; HexLore keeps the map.
 It is the Obsidian version of the HexLore desktop app and reads and writes
 the same map files, so a campaign can move between the two.
 
-**Status:** personal use, installed by hand (or with BRAT). Not in the
-community directory yet.
+HexLore runs on Obsidian for desktop (Windows, macOS, Linux), version
+1.13 or later.
 
 ## Install
 
-Copy `main.js`, `manifest.json` and `styles.css` from a release into
-`<vault>/.obsidian/plugins/hexlore/`, then enable **HexLore** under
-*Settings → Community plugins*. Start with the **HexLore** icon in the left
-ribbon → **New map…**.
+In Obsidian, open *Settings → Community plugins → Browse*, search for
+**HexLore**, install it and enable it. Start with the **HexLore** icon in the
+left ribbon → **New map…**.
+
+By hand: copy `main.js`, `manifest.json` and `styles.css` from a
+[release](../../releases) into `<vault>/.obsidian/plugins/hexlore/`, then
+enable **HexLore** under *Settings → Community plugins*.
 
 ## Network use and files outside the vault
 
 HexLore contacts no remote service, sends no telemetry and makes no
-outgoing requests. Two features reach beyond the vault, both desktop only
-and both started by you:
+outgoing requests. Two features reach beyond the vault, both started by
+you:
 
 - **The player view** runs a small web server on your computer, so your
   players can open the map in a browser. It listens on this computer only
@@ -60,14 +63,26 @@ npm run vendor             # re-copy the contract from the HexLore app's reposit
 
 Each build is copied into a dev vault: `$HEXLORE_VAULT`, else
 `../obsidian-test-vault` (`HEXLORE_VAULT=none` to skip). `npm run vendor`
-finds the HexLore app's repository through `$HEXLORE_FLUTTER`.
+finds the HexLore app's repository through `$HEXLORE_FLUTTER`; that
+repository is not public, but everything the plugin needs from it is already
+in `vendor/`, so building and testing need only this one.
 
 ## Credits
 
-Feature and biome icons from [game-icons.net](https://game-icons.net)
-(CC BY 3.0; authors listed in *About and credits*). Illustrated terrain
-symbols from Azgaar's Fantasy Map Generator (MIT). Strokes by
+Feature and biome icons from [game-icons.net](https://game-icons.net) by
+[Lorc](http://lorcblog.blogspot.com), [Delapouite](https://delapouite.com)
+and [Faithtoken](http://fungustoken.deviantart.com), under
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) (also listed in
+the map menu, *About and credits…*). Illustrated terrain symbols from
+[Azgaar's Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator)
+(MIT). Strokes by
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT);
-PDFs by [pdf-lib](https://pdf-lib.js.org) (MIT); the player link's QR code
-by [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+PDFs by [pdf-lib](https://pdf-lib.js.org) and
+[@pdf-lib/upng](https://github.com/Hopding/upng) (MIT); the player link's QR
+code by [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
 (MIT).
+
+## License
+
+HexLore for Obsidian is free software under the
+[GNU General Public License v3.0 or later](LICENSE).

@@ -74,8 +74,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   mirrors Flutter's `lib/core/` file for file where it can (`map_palette.dart`
   → `map_palette.ts`), so a Dart change is easy to follow here.
 - Node modules (`http`, `fs`, `os`) are desktop-only and load lazily,
-  ONLY through `src/desktop.ts` (`nodeModule`); the plugin is not declared
-  desktop-only. Never `await import('http')` directly: esbuild keeps it,
+  ONLY through `src/desktop.ts` (`nodeModule`); the manifest says
+  `isDesktopOnly: true` (the directory requires it, design §1.1). Never
+  `await import('http')` directly: esbuild keeps it,
   Obsidian's renderer cannot resolve it, and the feature silently does
   nothing (the tests, under Node, would still pass).
 

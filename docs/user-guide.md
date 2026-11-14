@@ -7,15 +7,18 @@ the map.
 
 ## Install
 
-The plugin is not in the community directory yet. Install it by hand:
+HexLore needs Obsidian 1.13 or later on a computer (Windows, macOS or
+Linux); it is not available on phones and tablets.
+
+In Obsidian: **Settings → Community plugins**, turn community plugins on,
+then **Browse**, search for **HexLore**, install it and enable it.
+
+To install it by hand instead:
 
 1. Download `main.js`, `manifest.json` and `styles.css` from a release (or
    build them, see the README).
 2. Copy them into `<your vault>/.obsidian/plugins/hexlore/`.
-3. In Obsidian: **Settings → Community plugins**, turn community plugins on,
-   then enable **HexLore**.
-
-The **BRAT** plugin can install and update it from its repository instead.
+3. In Obsidian: **Settings → Community plugins**, then enable **HexLore**.
 
 ## Your first map
 

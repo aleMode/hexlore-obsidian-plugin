@@ -17,9 +17,10 @@ Everything Flutter does is ported except the regional view, and except what
 Obsidian already does: the notes editor, page naming, wikilink renaming, the
 git-host backup (design §1.1).
 
-The plugin is not declared desktop-only. Desktop-only parts (the player
-server, the campaign-folder export) load Node modules lazily, only through
-`src/desktop.ts`.
+The plugin is declared desktop-only (`isDesktopOnly: true`, design §1.1:
+the community directory requires it of a plugin using Node.js APIs). The
+parts that use Node (the player server, the campaign-folder export) still
+load its modules lazily, only through `src/desktop.ts`.
 
 ## 2. Repository layout
 
