@@ -161,9 +161,10 @@ describe('encounters from the panel', () => {
 		Array.from(panel.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Check')!.click();
 		await tick(20);
 		expect(Notice.log.at(-1)).toMatch(/encounter-chance: 2/);
-		panel.contentEl.querySelector<HTMLElement>('.hexlore-roll-row [aria-label^="Add to"]')!.click();
+		// The session log is on: the roll is already in the session note, under its heading.
+		expect(panel.contentEl.querySelector('.hexlore-roll-row [aria-label^="Add to"]')).toBeNull();
 		await tick(20);
-		expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n- \d\d:\d\d · North: Wolves \(d6 \d\)\n$/);
+		expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n## Session log\n\n- \d\d:\d\d · Encounter: North: Wolves \(d6 \d\)\n$/);
 		map.setActiveRegion(null);
 	});
 });
@@ -360,6 +361,20 @@ describe('the dialogs', () => {
 		expect(defs).toContain('mapFolders');
 		// Switched from the players menu only (one place per setting).
 		expect(defs).not.toContain('playerLan');
+		// Travel: one control per terrain; blank hours = cannot be entered.
+		expect(defs).toContain('travel.hours.forest');
+		expect(defs).toContain('travel.height.hills');
+		await tab.setControlValue('travel.hours.forest', '5');
+		expect(plugin.settings.travel.terrainHours.forest).toBe(5);
+		expect(tab.getControlValue('travel.hours.forest')).toBe(5);
+		await tab.setControlValue('travel.hours.forest', '');
+		expect(plugin.settings.travel.terrainHours.forest).toBeNull();
+		await tab.setControlValue('travel.hours.forest', '4');
+		await tab.setControlValue('travel.height.hills', 3);
+		expect(plugin.settings.travel.heights.hills).toBe(3);
+		await tab.setControlValue('travel.height.hills', 1);
+		await tab.setControlValue('travel.referenceMiles', 0);
+		expect(plugin.settings.travel.referenceMiles).toBe(3); // refused
 	});
 
 	it('the import wizard runs every step on a synthetic map', async () => {
@@ -718,14 +733,28 @@ describe('the player view control', () => {
 		panel.contentEl.querySelector<HTMLElement>('[aria-label^="Travel to"]')!.click();
 		const modal = Modal.open.at(-1)!;
 		expect(modal.titleEl.textContent).toBe('Travel to C3?');
+		const index = map.mapState().file!;
+		const hoursBefore = plugin.party.state(index).hours;
 		Array.from(modal.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Travel')!.click();
 		await tick(20);
-		expect(editor.model.revealed.has(target)).toBe(true);
-		expect(plugin.players.votes()).toEqual([]);
-		expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n- \d\d:\d\d · Travelled to C3 \(2 votes: Mara, Bo\)\n$/);
-		editor.undoLast();
-		expect(editor.model.revealed.has(target)).toBe(false);
-		await plugin.players.stop();
+		try {
+			expect(editor.model.revealed.has(target)).toBe(true);
+			expect(plugin.players.votes()).toEqual([]);
+			// The party is there, and the hex's entry time was added.
+			expect(plugin.party.state(index).hex).toBe(target);
+			expect(plugin.party.state(index).hours).toBeGreaterThan(hoursBefore);
+			expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n- \d\d:\d\d · Travelled to C3 \([^)]*2 votes: Mara, Bo; revealed \d+ hex(es)?\)\n$/);
+			// Players see the party on a revealed hex, and not once it is hidden again.
+			const seen = await globalThis.fetch(`${plugin.players.url}/api/party`).catch(() => null);
+			if (seen) expect(await seen.json()).toEqual({ hex: target });
+			editor.undoLast();
+			expect(editor.model.revealed.has(target)).toBe(false);
+			const hidden = await globalThis.fetch(`${plugin.players.url}/api/party`).catch(() => null);
+			if (hidden) expect(await hidden.json()).toEqual({ hex: null });
+		} finally {
+			await plugin.players.stop();
+			plugin.party.place(index, null);
+		}
 	});
 
 	it('two starts at once leave one server, and stop closes it', async () => {
@@ -744,6 +773,55 @@ describe('the player view control', () => {
 		expect(await free()).toBe(before + 1);
 		await plugin.players.stop();
 		expect(await free()).toBe(before);
+	});
+});
+
+describe('the party and the preview', () => {
+	it('places and moves the party from the hex menu, counting the time', async () => {
+		const index = map.mapState().file!;
+		const menuAt = (q: number, r: number) => {
+			Menu.last = null;
+			(map as unknown as { cellMenu(c: [number, number], e: MouseEvent): void }).cellMenu([q, r], new MouseEvent('contextmenu'));
+			return Menu.last as unknown as Menu;
+		};
+		const titles = (m: Menu) => m.items.map((i) => i.title);
+		let m = menuAt(1, 1);
+		expect(titles(m)).toEqual(expect.arrayContaining(['Move the party here…', 'Place the party here']));
+		m.choose('Place the party here');
+		expect(plugin.party.state(index).hex).toBe('q1_r1');
+		m = menuAt(1, 1);
+		expect(titles(m)).toContain('Take the party off the map');
+		expect(titles(m)).not.toContain('Move the party here…');
+		const before = plugin.party.state(index).hours;
+		menuAt(2, 1).choose('Move the party here…');
+		const modal = Modal.open.at(-1)!;
+		expect(modal.contentEl.textContent).toContain('The party is at B2');
+		Array.from(modal.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Travel')!.click();
+		await tick(20);
+		expect(plugin.party.state(index).hex).toBe('q2_r1');
+		expect(plugin.party.state(index).hours).toBeGreaterThan(before);
+		// The panel shows where it is and the time travelled.
+		const panel = app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0]!.view as unknown as InspectorView;
+		(map as unknown as { setSelection(c: string[]): void }).setSelection([]);
+		await tick(20);
+		expect(panel.contentEl.textContent).toContain('Time travelled');
+		expect(panel.contentEl.textContent).toContain('C2');
+		map.mapState().editor!.undoLast(); // the reveal of the trip
+		plugin.party.place(index, null);
+		plugin.party.setHours(index, 0);
+	});
+
+	it('previews the map as players see it, and goes back', () => {
+		const data = () => (map as unknown as { data: { hexes: unknown[] } }).data;
+		const gm = data().hexes.length;
+		map.setPreviewPlayers(true);
+		expect(map.displayState().previewPlayers).toBe(true);
+		expect(map.contentEl.querySelector('.hexlore-preview-banner')).not.toBeNull();
+		expect(data().hexes.length).toBeLessThan(gm); // only what is revealed
+		map.contentEl.querySelector<HTMLElement>('.hexlore-preview-banner')!.click();
+		expect(map.displayState().previewPlayers).toBe(false);
+		expect(map.contentEl.querySelector('.hexlore-preview-banner')).toBeNull();
+		expect(data().hexes.length).toBe(gm);
 	});
 });
 

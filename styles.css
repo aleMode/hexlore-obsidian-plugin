@@ -1318,3 +1318,19 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
+
+/* Preview as players (map_view.ts): a banner over the map while it is on. */
+.hexlore-preview-banner {
+	position: absolute;
+	top: calc(var(--size-4-12) + var(--size-4-2));
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 5;
+	padding: var(--size-2-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+	box-shadow: var(--shadow-s);
+}

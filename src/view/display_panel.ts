@@ -31,6 +31,8 @@ export interface DisplayPanelState {
 	underlay: string | null;
 	sketchOverlay: SketchOverlay;
 	sketchOverlayMode: SketchOverlayMode;
+	/** The map is drawn as players see it (this view, until turned off). */
+	previewPlayers: boolean;
 }
 
 export interface DisplayPanelHost {
@@ -41,6 +43,7 @@ export interface DisplayPanelHost {
 	/** Show or hide the sketch over the hex view; the mode is kept while hidden. */
 	showSketchOverlay(shown: boolean, mode?: SketchOverlayMode): void;
 	removeUnderlay(): void;
+	setPreviewPlayers(on: boolean): void;
 }
 
 type Section = 'threads' | 'regions';
@@ -107,6 +110,10 @@ export class DisplayPanel {
 		const scroll = el.scrollTop;
 		el.empty();
 		const s = this.host.displayState();
+		const preview = row(el, { label: 'Preview as players', bold: true });
+		setTooltip(preview, 'Draw the map as players see it: only what is revealed, without secret features, threads, regions or borders. You can keep revealing while it is on.');
+		toggle(preview, s.previewPlayers, (on) => this.host.setPreviewPlayers(on));
+		el.createDiv({ cls: 'hexlore-display-divider' });
 		this.renderOverlays(el.createDiv({ cls: 'hexlore-display-overlays' }), s);
 		el.createDiv({ cls: 'hexlore-display-divider' });
 		this.renderDisplay(el, s);

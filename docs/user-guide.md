@@ -182,11 +182,50 @@ encounter-chance: 2 in 6
 - **Check** rolls `encounter-chance` (`2` means 2 in 6; `1 in 8` works) and
   the table when it hits.
 
-The session's rolls stay listed under the regions: copy one, add it to the
-session note (the newest note in the **GM notes** section), or roll that
-table again.
+The session's rolls stay listed under the regions: copy one, or roll that
+table again. Every roll is also written to the session log (below).
+
+## The party and travel time
+
+Right-click a hex: **Place the party here** puts the party's marker (a gold
+disc with a pennant) on it; **Move the party here…** makes the party travel
+there. A trip asks first:
+
+- **Time:** the hours to enter that hex, from the **Travel** settings, scaled
+  to this map's hex size. Change it for a boat, a forced march or a long
+  detour: a trip charges only the hex it arrives in.
+- **On arrival, reveal:** the hex and what is in sight, the hex only, or
+  nothing. Your last choice is the default.
+
+The Map panel's **Party** section shows where the party is and the **time
+travelled** on this map, in travel days (reset it there). **Travel** on a
+player vote is the same trip, and also clears the votes.
+
+Players see the party on their map too, but only on a hex they have
+revealed.
+
+Settings → **Travel**: the hex size the times are for (3 miles by default),
+the hours in a travel day (8), and per terrain the hours to enter a hex
+(defaults for 3-mile hexes: mountain, desert, swamp, volcano 8; forest,
+jungle, tundra 4; plains, hills, blank hexes 2; a road or highway through the
+hex 1; sea and lake cannot be entered: give the time by hand). Blank means
+"cannot be entered" for a terrain and "no effect" for roads and trails. A map
+with 6-mile hexes takes twice as long. **Terrain heights** there set how far
+**Reveal + line of sight** sees from each terrain.
+
+## The session log
+
+Encounter rolls and checks, the party's trips and every reveal or hide you
+make are added, with the time, under a **## Session log** heading at the end
+of the session note (the newest note in the **GM notes** section); the
+heading is added the first time. Turn it off in Settings → **Session log**:
+the rolls list then has an **Add to the session note** button instead.
 
 ## Display & overlays
+
+**Preview as players** (at the top) draws the map as players see it: only
+revealed hexes, no secret features, threads, regions or borders. You can keep
+revealing while it is on; click the banner over the map to go back.
 
 Choose the map style (**Clean** or **Illustrated**, optional blended biome
 edges), and show or hide threads, regions, borders, GM fog on hexes with no
@@ -235,10 +274,10 @@ vault; the zoom is per device. Renaming or moving a map keeps its place.
 4. While the view runs, the players button opens its menu: copy the link, or
    stop.
 5. Players click a hex to vote where the party goes next; votes show on your
-   map and in the Map panel. **Travel** (the footprints beside a vote) asks
-   first, then reveals the hex, alone or with what is in sight (it remembers
-   your last choice), clears the votes and adds "Travelled to F3 (3 votes:
-   …)" to the session note. Undo takes the reveal back.
+   map and in the Map panel. **Travel** (the footprints beside a vote) moves
+   the party there as a trip (see *The party and travel time*), clears the
+   votes and logs "Travelled to F3 (4 h, forest; 1 day 2 h travelled; 3
+   votes: …)". Undo takes the reveal back.
 
 Players see only the revealed map: terrain, icons and labels that are not
 hidden, and rivers, roads and trails near what they have explored. Notes

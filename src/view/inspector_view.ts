@@ -15,7 +15,8 @@ import { TERRAINS, type Terrain } from '../core/hex_data';
 import { toPlain, type JsonObject } from '../core/json';
 import { sectionsOf, updateRegionLinks } from '../storage/index_file';
 import { HOVER_SOURCE, MAP_STATE_EVENT, MapView, type MapPanelState } from './map_view';
-import { addToSessionNote, checkRegion, chooseTable, chosenTable, clearRollHistory, entryText, readRegionNote, rollHistory, rollRegion, sessionNote, type RegionRef, type RollEntry } from './encounter_roller';
+import { addToSessionNote, checkRegion, chooseTable, chosenTable, clearRollHistory, entryText, readRegionNote, rollHistory, rollRegion, type RegionRef, type RollEntry } from './encounter_roller';
+import { sessionLog, sessionNote } from './session_note';
 import { openNote } from './open_note';
 import { NOTE_KINDS, defaultKindFor, type NoteKind } from '../notes/note_meta';
 import type { HexLoreSettings } from '../settings';
@@ -23,7 +24,9 @@ import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { createNote, linkPath, noteKind, outgoingLinks, peopleAt, resolveLink, templateFiles } from './vault_notes';
 import { ROUTE_KINDS } from './toolbar';
 import { MOD, asButton, setDisabled } from './a11y';
-import { TravelModal } from './travel_modal';
+import { TravelModal, placeName } from './travel_modal';
+import { PARTY_EVENT, type PartyControl } from '../party/party_control';
+import { formatHours } from '../party/travel';
 
 export const INSPECTOR_VIEW = 'hexlore-panel';
 
@@ -52,6 +55,7 @@ export class InspectorView extends ItemView {
 		leaf: WorkspaceLeaf,
 		private readonly settings: () => HexLoreSettings,
 		private readonly players: PlayerControl,
+		private readonly party: PartyControl,
 	) {
 		super(leaf);
 	}
@@ -81,6 +85,7 @@ export class InspectorView extends ItemView {
 			}),
 		);
 		this.registerEvent((this.app.workspace as Events).on(PLAYERS_EVENT, () => this.render()));
+		this.registerEvent((this.app.workspace as Events).on(PARTY_EVENT, () => this.render()));
 		this.registerEvent(
 			(this.app.workspace as Events).on(MAP_STATE_EVENT, (view: unknown) => {
 				if (!(view instanceof MapView)) return;
@@ -159,6 +164,7 @@ export class InspectorView extends ItemView {
 			if (state.tool === 'region' || (!state.selectedLine && !state.selectedThread && !state.selection.length)) this.renderRegions(state, editor);
 			if (!state.selectedLine && !state.selectedThread && !state.selection.length && state.tool !== 'region') {
 				this.renderSummary(editor);
+				this.renderParty(state.file, editor);
 				this.renderVotes(state.file, editor);
 			}
 		}
@@ -306,6 +312,42 @@ export class InspectorView extends ItemView {
 		);
 	}
 
+	// ----- the party (design §1.12) ---------------------------------------------------
+
+	/** Where the party is and how long it has travelled. It moves from the hex
+	 *  menu and from a travel vote. */
+	private renderParty(file: TFile | null, editor: MapEditor): void {
+		if (!file) return;
+		const el = this.contentEl;
+		const p = this.party.state(file);
+		const settings = this.party.travelSettings();
+		this.section('Party');
+		const m = p.hex ? /^q(-?\d+)_r(-?\d+)$/.exec(p.hex) : null;
+		if (!m) {
+			el.createDiv({ cls: 'setting-item-description', text: 'Not on the map: right-click a hex → Place the party here, or Move the party here… to count the travel time.' });
+		} else {
+			const cell: Cell = [Number(m[1]), Number(m[2])];
+			const label = placeName(editor, cell);
+			const row = new Setting(el).setName('At');
+			const a = row.nameEl.createEl('a', { text: ` ${label}`, cls: 'internal-link' });
+			a.addEventListener('click', (e) => {
+				e.preventDefault();
+				this.map?.showHexes(new Set([p.hex!]), 'The party');
+			});
+			if (!editor.readOnly) row.addExtraButton((b) => b.setIcon('x').setTooltip('Take the party off the map').onClick(() => this.party.place(file, null)));
+		}
+		new Setting(el)
+			.setName('Time travelled')
+			.setDesc(`${formatHours(p.hours, settings.dayHours)} (days of ${settings.dayHours} hours)`)
+			.addExtraButton((b) =>
+				b
+					.setIcon('rotate-ccw')
+					.setTooltip('Start counting again')
+					.setDisabled(!p.hours)
+					.onClick(() => new ConfirmModal(this.app, 'Reset the travel time', `Set the time travelled on this map (${formatHours(p.hours, settings.dayHours)}) back to 0?`, () => this.party.setHours(file, 0), 'Reset').open()),
+			);
+	}
+
 	// ----- the player view (item 2.6) -------------------------------------------------
 
 	/** The players' travel votes, while this map is served. Starting and
@@ -335,7 +377,7 @@ export class InspectorView extends ItemView {
 			if (m && !editor.readOnly) {
 				const go = asButton(row.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': `Travel to ${label}` } }));
 				setIcon(go, 'footprints');
-				go.addEventListener('click', () => new TravelModal({ app: this.app, index: file, editor, clearVotes: () => p.clearVotes() }, [Number(m[1]), Number(m[2])], r).open());
+				go.addEventListener('click', () => new TravelModal({ app: this.app, index: file, editor, party: this.party, clearVotes: () => p.clearVotes() }, [Number(m[1]), Number(m[2])], r).open());
 			}
 		}
 		new Setting(el).addButton((b) => b.setButtonText('Clear votes').onClick(() => p.clearVotes()));
@@ -843,7 +885,8 @@ export class InspectorView extends ItemView {
 				b.addEventListener('click', run);
 			};
 			action('copy', 'Copy', () => void navigator.clipboard.writeText(entryText(e)).then(() => new Notice('Copied.')));
-			action('file-plus', session ? `Add to “${session.basename}”` : 'Add to the session note (none yet)', () => void addToSessionNote(this.app, index, e));
+			// With the session log on, every roll is already in the note.
+			if (!sessionLog.enabled()) action('file-plus', session ? `Add to “${session.basename}”` : 'Add to the session note (none yet)', () => void addToSessionNote(this.app, index, e));
 			const region = state.regionLinks.get(e.regionId)?.[0];
 			const g = state.editor?.model.regions.get(e.regionId);
 			if (e.table !== undefined && region && g) {

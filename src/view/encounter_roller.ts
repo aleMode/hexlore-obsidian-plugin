@@ -1,6 +1,6 @@
 // Rolling a region's encounters, from the map panel or the hex menu, and
 // what becomes of the result: a short history per map (this session only)
-// and a line added to the session note on request. The tables are read by
+// and a line in the session log (view/session_note.ts). The tables are read by
 // notes/encounter_table.ts (pure).
 
 import { Notice, type App, type TFile } from 'obsidian';
@@ -13,9 +13,8 @@ import {
 	type EncounterChance,
 	type EncounterTable,
 } from '../notes/encounter_table';
-import { DEFAULT_SECTIONS } from '../storage/hexmap_index';
-import { sectionsOf } from '../storage/index_file';
-import { notesInFolder, resolveLink } from './vault_notes';
+import { logEvent, writeToSessionLog } from './session_note';
+import { resolveLink } from './vault_notes';
 
 export interface RollEntry {
 	at: number;
@@ -88,10 +87,12 @@ export async function rollRegion(app: App, index: TFile, region: RegionRef, tabl
 		new Notice('The region’s note is missing.');
 		return null;
 	}
-	return rollFrom(index, region, note, table);
+	return rollFrom(app, index, region, note, table);
 }
 
-function rollFrom(index: TFile, region: RegionRef, note: RegionNote, table?: string): RollEntry | null {
+/** [check]: the encounter check that led here ("2 in 6, rolled 1"), told in
+ *  the same log line. */
+function rollFrom(app: App, index: TFile, region: RegionRef, note: RegionNote, table?: string, check?: string): RollEntry | null {
 	if (!note.tables.length) {
 		new Notice(`“${note.file.basename}” has no “## Encounters” table or list yet.`);
 		return null;
@@ -103,6 +104,7 @@ function rollFrom(index: TFile, region: RegionRef, note: RegionNote, table?: str
 	const roll = r.roll !== null ? ` (${r.dice ?? 'roll'} ${r.roll})` : '';
 	const entry: RollEntry = { at: Date.now(), regionId: region.id, line: `${name}: ${r.text}${roll}`, detail: r.detail, table: t.name };
 	record(index, entry);
+	void logEvent(app, index, `Encounter${check ? ` (check ${check})` : ''}: ${entry.line}`, entry.detail);
 	new Notice(`Encounter: ${entry.line}${entry.detail.length ? `\n${entry.detail.join('\n')}` : ''}`, 10000);
 	return entry;
 }
@@ -123,10 +125,11 @@ export async function checkRegion(app: App, index: TFile, region: RegionRef): Pr
 	const entry: RollEntry = { at: Date.now(), regionId: region.id, line: `${region.name}: check ${formatChance(note.chance)}, rolled ${c.roll}: ${c.hit ? 'encounter' : 'nothing'}`, detail: [] };
 	record(index, entry);
 	if (!c.hit) {
+		void logEvent(app, index, entry.line);
 		new Notice(entry.line, 5000);
 		return entry;
 	}
-	return rollFrom(index, region, note) ?? entry;
+	return rollFrom(app, index, region, note, undefined, `${formatChance(note.chance)}, rolled ${c.roll}`) ?? entry;
 }
 
 /** The entry as plain text, for the clipboard or a note. */
@@ -134,35 +137,8 @@ export function entryText(e: RollEntry): string {
 	return [e.line, ...e.detail.map((d) => `  ${d}`)].join('\n');
 }
 
-const time = (at: number) => {
-	const d = new Date(at);
-	return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
-
-/** The session note: the newest note in the map's "GM notes" section. */
-export function sessionNote(app: App, index: TFile): TFile | null {
-	const sections = sectionsOf(app, index) ?? [...DEFAULT_SECTIONS];
-	const s = sections.find((x) => x.name.toLowerCase() === 'gm notes');
-	if (!s) return null;
-	const notes = notesInFolder(app, s.folder);
-	return notes.reduce<TFile | null>((best, f) => (!best || f.stat.ctime > best.stat.ctime ? f : best), null);
-}
-
-/** Add [e] at the end of the session note, as a list item. */
+/** Add [e] to the session note's log, saying where it went (the rolls
+ *  list's button, shown when the log is not kept on its own). */
 export function addToSessionNote(app: App, index: TFile, e: RollEntry): Promise<boolean> {
-	return appendToSessionNote(app, index, e.line, e.detail, e.at);
-}
-
-/** Add `- HH:MM · [line]` (and [detail] under it) at the end of the session
- *  note. False, with a notice, when there is none. */
-export async function appendToSessionNote(app: App, index: TFile, line: string, detail: string[] = [], at = Date.now()): Promise<boolean> {
-	const note = sessionNote(app, index);
-	if (!note) {
-		new Notice('No session note yet: create one from the notes button in the top bar.');
-		return false;
-	}
-	const lines = [`- ${time(at)} · ${line}`, ...detail.map((d) => `    - ${d}`)].join('\n');
-	await app.vault.process(note, (text) => (text.trim() ? `${text.replace(/\n*$/, '\n')}${lines}\n` : `${lines}\n`));
-	new Notice(`Added to “${note.basename}”.`);
-	return true;
+	return writeToSessionLog(app, index, e.line, e.detail, e.at, true);
 }

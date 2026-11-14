@@ -1,6 +1,7 @@
 import { MarkdownView, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, type TAbstractFile, type ViewState } from 'obsidian';
 import { exportToFlutter } from './convert/export_command';
 import { fileMenu, ribbonMenu, type MenuActions } from './plugin_menus';
+import { PartyControl } from './party/party_control';
 import { PlayerControl } from './server/control';
 import { HexLoreSettingTab, readSettings, type HexLoreSettings } from './settings';
 import { afterFolderRename, afterIndexRename, type DataLinkFix } from './storage/data_link';
@@ -12,6 +13,7 @@ import { ATLAS_VIEW, AtlasPickerModal, AtlasView } from './view/atlas_view';
 import { INSPECTOR_VIEW, InspectorView } from './view/inspector_view';
 import { around } from './patch';
 import { noteRenames } from './view/vault_notes';
+import { sessionLog } from './view/session_note';
 import { MapPicker, NewMapModal, newMapFolder } from './view/map_menus';
 import { HOVER_SOURCE, MAP_VIEW, MapView, isMapIndex } from './view/map_view';
 import { SECTIONS_VIEW, SectionsView } from './view/sections_view';
@@ -25,12 +27,20 @@ export default class HexLorePlugin extends Plugin {
 	private stores!: StoreRegistry;
 	private sectionRenames: Promise<void> = Promise.resolve();
 	players!: PlayerControl;
+	party!: PartyControl;
 
 	async onload() {
 		this.settings = readSettings(await this.loadData());
+		sessionLog.enabled = () => this.settings.sessionLog;
+		this.party = new PartyControl(this.app, {
+			book: () => this.settings.party,
+			setBook: (b) => (this.settings.party = b),
+			travel: () => this.settings.travel,
+			save: () => this.saveSettings(),
+		});
 		this.addSettingTab(new HexLoreSettingTab(this.app, this));
 		this.stores = new StoreRegistry(this);
-		this.players = new PlayerControl(this.app, this.stores, () => this.settings, () => this.saveSettings());
+		this.players = new PlayerControl(this.app, this.stores, () => this.settings, () => this.saveSettings(), this.party);
 		this.players.attachStatusBar(this.addStatusBarItem());
 		this.registerView(MAP_VIEW, (leaf) => new MapView(leaf, (file, l) => this.openMarkdown(file, l), this.stores, {
 				ensure: () => this.showPanel(false),
@@ -53,6 +63,7 @@ export default class HexLorePlugin extends Plugin {
 				mapFolders: () => this.settings.mapFolders,
 				mapsTogether: () => this.pickMapsTogether(),
 				showSections: () => void this.showSections(true),
+				party: this.party,
 			}));
 		this.registerView(ATLAS_VIEW, (leaf) => new AtlasView(leaf, {
 				layout: () => this.atlasLayout(),
@@ -60,7 +71,7 @@ export default class HexLorePlugin extends Plugin {
 				stores: this.stores,
 				pick: () => this.pickMapsTogether(false),
 			}));
-		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players));
+		this.registerView(INSPECTOR_VIEW, (leaf) => new InspectorView(leaf, () => this.settings, this.players, this.party));
 		this.registerView(SECTIONS_VIEW, (leaf) => new SectionsView(leaf, () => this.settings));
 		// Ctrl-hover on a hex previews its principal note (Page preview).
 		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Hex maps', defaultMod: true });
@@ -100,6 +111,8 @@ export default class HexLorePlugin extends Plugin {
 		}));
 		// An undo can bring back a link to a note renamed since: it follows.
 		this.registerEvent(this.app.vault.on('rename', (f, old) => noteRenames.record(old, f.path)));
+		// The party is kept by index path: it follows a renamed map.
+		this.registerEvent(this.app.vault.on('rename', (f, old) => this.party.renamed(old, f.path)));
 		// "Show maps together" keeps its maps by index path: it follows them.
 		this.registerEvent(
 			this.app.vault.on('rename', (f, old) => {

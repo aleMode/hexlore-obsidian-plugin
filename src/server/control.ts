@@ -11,6 +11,7 @@ import { encodeCompact } from '../core/json';
 import { pickLanAddress } from '../core/lan_address';
 import { filterCampaignForPlayer } from '../core/player_filter';
 import { editorFor } from '../edit/editors';
+import type { PartyControl } from '../party/party_control';
 import type { MapStore } from '../storage/map_store';
 import type { StoreRegistry } from '../storage/store_registry';
 import { dataFolderOf } from '../view/map_view';
@@ -49,6 +50,7 @@ export class PlayerControl {
 		private readonly stores: StoreRegistry,
 		private readonly settings: () => PlayerSettings,
 		private readonly saveSettings: () => Promise<void>,
+		private readonly party?: PartyControl,
 	) {}
 
 	get running(): boolean {
@@ -122,6 +124,12 @@ export class PlayerControl {
 				payload: () => this.payload(),
 				onVotesChanged: () => this.changed(),
 				hostnames: await hostnames(),
+				// Players see where they are, but only on a hex they have seen:
+				// a party moved into the dark shows nothing until it is revealed.
+				party: () => {
+					const hex = this.party?.state(this.file).hex ?? null;
+					return hex && this.store?.model.revealed.has(hex) ? hex : null;
+				},
 			});
 			const lan = this.settings().playerLan;
 			const port = await server.start(lan);

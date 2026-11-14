@@ -139,6 +139,18 @@ describe('the player server, on a real socket', () => {
 		expect(server.votes.voterCount).toBe(1);
 	});
 
+	it('serves the party script with the page, and the party only as told', async () => {
+		const html = await (await fetch(url('/'))).text();
+		expect(html).toContain('<script src="/static/party.js"></script>');
+		expect(html.indexOf('/static/party.js')).toBeGreaterThan(html.indexOf('/static/player.js'));
+		expect((await fetch(url('/static/party.js'))).status).toBe(200);
+		expect(await (await fetch(url('/api/party'))).json()).toEqual({ hex: null });
+		await server.stop();
+		server = new PlayerServer({ http, assets: PLAYER_ASSETS, payload, party: () => 'q1_r1' });
+		await server.start(false);
+		expect(await (await fetch(url('/api/party'))).json()).toEqual({ hex: 'q1_r1' });
+	});
+
 	it('counts the devices that polled the map lately', async () => {
 		expect(server.connectedCount()).toBe(0);
 		await fetch(url('/api/map'));

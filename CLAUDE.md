@@ -254,6 +254,18 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
   rolls a region note's tables; `view/encounter_roller.ts` rolls from the
   panel and the hex menu and appends to the session note. The ported
   `core/region_encounters.ts` is for the conformance fixtures only.
+- The party and travel (design §1.12): `src/party/` — `travel.ts` (pure:
+  hours to ENTER a hex by terrain / road, scaled by hex size; settings
+  `travel`), `party.ts` (pure: per-map position + hours in `data.json`,
+  NEVER in map files or the index), `party_control.ts`. Players see the
+  party through `/api/party` (only on a REVEALED hex) and
+  `server/party_script.ts`, added to the SERVED page, never to
+  `vendor/player/` — the plugin's own, outside the contract (Flutter's
+  player view shows no party; software_hexlore#7). The session log:
+  `view/session_note.ts` + `notes/session_log.ts` (`## Session log` in the
+  newest GM note; the editor's `fogDone` reports fog steps, `quietFog`
+  for a step logged by its caller). Preview as players: `map_view.ts`
+  `setPreviewPlayers` (the filter's payload as the scene; not saved).
 - Notes (item 2.5): `src/notes/note_meta.ts` (pure) holds the note
   CONVENTIONS — `type: npc | quest | place` in the frontmatter, Flutter's NPC
   and quest fields under the same names, `location` = link(s) to PLACE NOTES

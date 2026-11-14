@@ -289,6 +289,35 @@ const VOTE_INK = '#E8E8F0'; // Flutter's labelColor
 
 /** Live player travel votes: a numbered pill on every voted hex (Flutter's
  *  _paintVotes). Fixed in SCREEN pixels so it stays legible zoomed out. */
+/** The party's marker (design §1.12): a gold disc with a pennant, on the
+ *  upper half of its hex, the same size at every zoom; [revealed] false
+ *  draws it hollow (players do not see it there). */
+export function drawParty(f: OverlayFrame, q: number, r: number, revealed: boolean): void {
+	sceneSpace(f);
+	const c = f.c;
+	const s = 1 / f.camera.scale;
+	const [cx, cy0] = axialToPixel(q, r);
+	const cy = cy0 - R * 0.18;
+	const rad = Math.max(11 * s, R * 0.26);
+	c.beginPath();
+	c.arc(cx, cy, rad, 0, Math.PI * 2);
+	c.fillStyle = revealed ? PARTY_FILL : 'rgba(212, 168, 74, 0.35)';
+	c.fill();
+	c.lineWidth = 2.5 * s;
+	c.strokeStyle = PARTY_INK;
+	c.stroke();
+	c.beginPath();
+	c.moveTo(cx - rad * 0.35, cy + rad * 0.55);
+	c.lineTo(cx - rad * 0.35, cy - rad * 0.6);
+	c.lineTo(cx + rad * 0.5, cy - rad * 0.3);
+	c.lineTo(cx - rad * 0.35, cy);
+	c.lineWidth = 1.8 * s;
+	c.stroke();
+}
+
+const PARTY_FILL = '#D4A84A';
+const PARTY_INK = '#2B1D0E';
+
 export function drawVotes(f: OverlayFrame, counts: Map<string, number>): void {
 	if (!counts.size) return;
 	sceneSpace(f);

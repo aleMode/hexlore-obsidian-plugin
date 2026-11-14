@@ -54,6 +54,7 @@ const STATIC: Record<string, [file: string, type: string]> = {
 	'/static/terrain_glyphs.js': ['terrain_glyphs.js', 'text/javascript; charset=utf-8'],
 	'/static/texture_tables.js': ['texture_tables.js', 'text/javascript; charset=utf-8'],
 	'/static/texture_spec.js': ['texture_spec.js', 'text/javascript; charset=utf-8'],
+	'/static/party.js': ['party.js', 'text/javascript; charset=utf-8'],
 };
 
 /** The map as players get it: the filtered JSON, a tag that changes when it
@@ -76,6 +77,9 @@ export interface PlayerServerOptions {
 	payload: () => PlayerPayload;
 	/** A vote was cast or withdrawn. */
 	onVotesChanged?: () => void;
+	/** The party's hex as players may see it: null unless placed on a
+	 *  REVEALED hex (the plugin's own, design §1.12). */
+	party?: () => string | null;
 	/** This computer's names a player may use besides its IP addresses
 	 *  (`os.hostname()`, its `.local` name). */
 	hostnames?: readonly string[];
@@ -184,6 +188,8 @@ export class PlayerServer {
 			switch (url.pathname) {
 				case '/api/map':
 					return this.serveMap(req, res);
+				case '/api/party':
+					return this.json(res, { hex: this.partyHex() });
 				case '/api/votes':
 					return this.json(res, this.votes.toJson(url.searchParams.get('voter')));
 				case '/api/vote':
@@ -197,6 +203,14 @@ export class PlayerServer {
 			} catch {
 				/* the client went away */
 			}
+		}
+	}
+
+	private partyHex(): string | null {
+		try {
+			return this.opts.party?.() ?? null;
+		} catch {
+			return null;
 		}
 	}
 
