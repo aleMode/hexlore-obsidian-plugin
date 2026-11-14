@@ -26,6 +26,7 @@ import { DEFAULT_TRACE, suggestRiverSeeds, traceRiversDebug, type RiverTracePara
 import { UnderlayConfig } from '../importer/underlay';
 import { ART } from '../render/art';
 import type { Anchor } from '../core/river';
+import { MOD } from './a11y';
 
 type Step = 'pick' | 'calibrate' | 'review' | 'rivers' | 'place';
 const STEPS: { id: Step; label: string }[] = [
@@ -1014,7 +1015,7 @@ export class ImportWizard extends Modal {
 			});
 			this.target.underlayChanged();
 		}
-		new Notice(`Imported: ${out.applied} hexes painted${out.riversAdded ? `, ${out.riversAdded} rivers` : ''}${out.resized ? ', grid resized' : ''}. One Ctrl+Z undoes it.`, 8000);
+		new Notice(`Imported: ${out.applied} hexes painted${out.riversAdded ? `, ${out.riversAdded} rivers` : ''}${out.resized ? ', grid resized' : ''}. One ${MOD}+Z undoes it.`, 8000);
 		this.close();
 	}
 }

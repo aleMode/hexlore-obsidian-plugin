@@ -37,6 +37,14 @@ entries go under *Unreleased*; a release moves them under its version.
   **Roll encounter** in a hex's right-click menu rolls for its region.
 - Fog of war can be undone: a fog-brush drag, reveal / hide, reveal + line of
   sight, reveal all and hide all are each one undo step.
+- **Travel here** on a travel vote in the map panel: after you confirm, it
+  reveals the hex (alone, or with what is in sight: the dialog remembers
+  your last choice), clears the votes and adds the trip to the session note.
+- The "player view started" dialog shows a QR code of the link when serving
+  on the local network, and the status bar counts the devices connected.
+- Quick jump (Ctrl+K) takes coordinates: `F3`, or `q5 r-2`.
+- The top bar, the tool strip, the palette, Display & overlays and the panel's
+  icon buttons can be reached with Tab and pressed with Enter or Space.
 
 ### Changed
 - Renderer: tiles, atlas, redraws limited to what an edit touched
@@ -69,7 +77,32 @@ entries go under *Unreleased*; a release moves them under its version.
 - While the player view runs, clicking the players button opens its menu
   (copy the link, stop) instead of stopping at once and dropping the votes.
 
+- Undo and redo are in the top bar only; the tool strip's and the Sketch
+  strip's own pair are gone (the top bar's undoes the sketch in the Sketch
+  view).
+- Shortcuts in tooltips and messages say Cmd on macOS.
+- The session notes menu lists the newest 10, then "All N in Sections".
+- Quick jump lists the characters and quests of this map's sections only, not
+  of the whole vault.
+- On a phone or tablet the player view's entries are gone (it needs a
+  computer); the players menu keeps Reveal all / Hide all.
+- A hex's text is called its **name** everywhere (it was also "label").
+
 ### Fixed
+- Undoing a delete after one of the hex's notes was renamed brought back a
+  broken link; it now links the note under its new name.
+- A note link that could not be saved in the map file was shown anyway,
+  silently; it is now reported and the map shows what the file has.
+- Starting the player view twice in quick succession could leave a second
+  server running until Obsidian quit.
+- A sync or git pull landing on a map file while an edit to it waited to be
+  saved could be overwritten; the pulled version is now kept (and the
+  unsaved edit to that file reported, as when the sync comes first).
+- The player server answers only requests addressed to this computer (no
+  web page can read the map or vote through it), and one device can hold at
+  most 8 voters, so it cannot fill the tally.
+- Turning HexLore off no longer removes another plugin's changes to how
+  files open (when that plugin was turned on after HexLore).
 - Encounter tables were rolled on the width of each range: a 2d6 table gave
   its 2 and 12 three times their odds, `96-00` on a d100 counted as one,
   `- 3 xorn` lost its "x", a day/night table read as nothing, and a nested

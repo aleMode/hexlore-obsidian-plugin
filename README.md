@@ -18,6 +18,21 @@ Copy `main.js`, `manifest.json` and `styles.css` from a release into
 *Settings → Community plugins*. Start with the **HexLore** icon in the left
 ribbon → **New map…**.
 
+## Network use and files outside the vault
+
+HexLore contacts no remote service, sends no telemetry and makes no
+outgoing requests. Two features reach beyond the vault, both desktop only
+and both started by you:
+
+- **The player view** runs a small web server on your computer, so your
+  players can open the map in a browser. It listens on this computer only
+  (`127.0.0.1`, ports 5174–5180) unless you turn on **Serve on the local
+  network** in the players menu; then devices on your network can reach it.
+  It serves only the map, filtered to what players may see, and takes
+  travel votes. It stops when you stop it or close Obsidian.
+- **Export as a campaign folder…** writes a copy of the campaign into a
+  folder you choose, outside the vault, for the HexLore desktop app.
+
 ## Documentation
 
 | Document | For |
@@ -53,4 +68,6 @@ Feature and biome icons from [game-icons.net](https://game-icons.net)
 (CC BY 3.0; authors listed in *About and credits*). Illustrated terrain
 symbols from Azgaar's Fantasy Map Generator (MIT). Strokes by
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT);
-PDFs by [pdf-lib](https://pdf-lib.js.org) (MIT).
+PDFs by [pdf-lib](https://pdf-lib.js.org) (MIT); the player link's QR code
+by [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+(MIT).

@@ -94,6 +94,12 @@ export class MapEditor {
 	 *  view wires it to `vault.process`, applying them to the file as it is
 	 *  then (so a link Obsidian is renaming meanwhile is not lost). */
 	linkWriter: ((changes: Map<string, string[] | null>) => Promise<void> | void) | null = null;
+	/** Brings a kept link text up to date (a note renamed since an undo
+	 *  snapshot took it); null leaves link texts as they are. */
+	fixLink: ((link: string) => string) | null = null;
+	/** A link write failed (the index is gone, locked…): the view says so and
+	 *  reads the index again, which drops the change from [links]. */
+	linkWriteFailed: ((error: unknown) => void) | null = null;
 	/** Link changes written but not yet seen back in the index: a read of the
 	 *  index in between must not undo them. */
 	private pendingLinks: Map<string, string[] | null>[] = [];
@@ -114,8 +120,10 @@ export class MapEditor {
 	}
 
 	/** Apply link changes here and in the index. */
-	private changeLinks(changes: Map<string, string[] | null>): void {
-		if (!changes.size) return;
+	private changeLinks(given: Map<string, string[] | null>): void {
+		if (!given.size) return;
+		const fix = this.fixLink;
+		const changes = fix ? new Map([...given].map(([id, list]) => [id, list && list.map(fix)] as const)) : given;
 		for (const [id, list] of changes) {
 			if (list && list.length) this.links.set(id, [...list]);
 			else this.links.delete(id);
@@ -125,7 +133,10 @@ export class MapEditor {
 			const entry = new Map(changes);
 			this.pendingLinks.push(entry);
 			const done = () => (this.pendingLinks = this.pendingLinks.filter((e) => e !== entry));
-			written.then(done, done);
+			written.then(done, (e: unknown) => {
+				done();
+				this.linkWriteFailed?.(e);
+			});
 		}
 		this.emit({ kind: 'links' });
 	}

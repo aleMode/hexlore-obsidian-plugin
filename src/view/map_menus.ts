@@ -164,13 +164,17 @@ export class QuickJumpModal extends SuggestModal<JumpTarget> {
 		app: App,
 		private readonly entries: JumpTarget[],
 		private readonly go: (t: JumpTarget) => void,
+		/** The cell a query names as coordinates ("F3"), when on the map. */
+		private readonly coords: (query: string) => JumpTarget | null = () => null,
 	) {
 		super(app);
-		this.setPlaceholder('Jump to a hex, a region, a place, a character, a quest…');
+		this.setPlaceholder('Jump to a hex (by name or coordinates), a region, a place, a character, a quest…');
 	}
 
 	getSuggestions(query: string): JumpTarget[] {
-		return rankEntries(query, this.entries);
+		const at = this.coords(query);
+		const ranked = rankEntries(query, this.entries);
+		return at ? [at, ...ranked] : ranked;
 	}
 
 	renderSuggestion(t: JumpTarget, el: HTMLElement): void {
@@ -185,6 +189,7 @@ export class QuickJumpModal extends SuggestModal<JumpTarget> {
 
 const KIND_LABEL: Record<string, string> = {
 	hex: 'Hex',
+	coords: 'Coordinates',
 	region: 'Region',
 	place: 'Place',
 	npc: 'Character',

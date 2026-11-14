@@ -22,6 +22,8 @@ import type { HexLoreSettings } from '../settings';
 import { PLAYERS_EVENT, type PlayerControl } from '../server/control';
 import { createNote, linkPath, noteKind, outgoingLinks, peopleAt, resolveLink, templateFiles } from './vault_notes';
 import { ROUTE_KINDS } from './toolbar';
+import { MOD, asButton, setDisabled } from './a11y';
+import { TravelModal } from './travel_modal';
 
 export const INSPECTOR_VIEW = 'hexlore-panel';
 
@@ -169,7 +171,7 @@ export class InspectorView extends ItemView {
 
 	private renderSummary(editor: MapEditor): void {
 		const el = this.contentEl;
-		el.createDiv({ cls: 'setting-item-description', text: 'Click a hex, a river, a road or a thread to inspect it. Drag to select several hexes; Ctrl+click adds one.' });
+		el.createDiv({ cls: 'setting-item-description', text: `Click a hex, a river, a road or a thread to inspect it. Drag to select several hexes; ${MOD}+click adds one.` });
 		const m = editor.model;
 		const painted = [...m.hexes.values()].filter((h) => h.terrain !== 'default').length;
 		const named = [...m.hexes.values()].filter((h) => h.name).length;
@@ -191,7 +193,7 @@ export class InspectorView extends ItemView {
 		el.createEl('h4', { text: 'Sketch', cls: 'hexlore-panel-hex' }).createSpan({ cls: 'hexlore-panel-coords', text: `  ${plural(editor.sketch.items.length, 'item')}` });
 		el.createDiv({
 			cls: 'setting-item-description',
-			text: 'Draw freely over the lattice. Biome colours become terrain and river, road and trail colours become lines when you Hexify; ink and labels are notes only. Right-drag (or the pen’s eraser end) erases. Ctrl+Z undoes here only.',
+			text: `Draw freely over the lattice. Biome colours become terrain and river, road and trail colours become lines when you Hexify; ink and labels are notes only. Right-drag (or the pen’s eraser end) erases. ${MOD}+Z undoes here only.`,
 		});
 		new Setting(el)
 			.addButton((b) =>
@@ -330,6 +332,11 @@ export class InspectorView extends ItemView {
 				this.map?.showHexes(new Set([r.hexId]), `Votes for ${label}`);
 			});
 			row.createSpan({ cls: 'hexlore-vote-names', text: r.voterNames.join(', ') });
+			if (m && !editor.readOnly) {
+				const go = asButton(row.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': `Travel to ${label}` } }));
+				setIcon(go, 'footprints');
+				go.addEventListener('click', () => new TravelModal({ app: this.app, index: file, editor, clearVotes: () => p.clearVotes() }, [Number(m[1]), Number(m[2])], r).open());
+			}
 		}
 		new Setting(el).addButton((b) => b.setButtonText('Clear votes').onClick(() => p.clearVotes()));
 	}
@@ -394,10 +401,10 @@ export class InspectorView extends ItemView {
 					editor.setHexNotes(id, next, 'Reorder notes');
 				};
 				const button = (icon: string, label: string, disabled: boolean, action: () => void) => {
-					const b = row.createDiv({ cls: 'clickable-icon' });
+					const b = asButton(row.createDiv({ cls: 'clickable-icon' }));
 					setIcon(b, icon);
 					b.setAttr('aria-label', label);
-					if (disabled) b.addClass('is-disabled');
+					if (disabled) setDisabled(b, true);
 					else b.addEventListener('click', action);
 				};
 				if (broken) {
@@ -420,7 +427,7 @@ export class InspectorView extends ItemView {
 					),
 				);
 			});
-			el.createDiv({ cls: 'setting-item-description', text: 'The first is the principal note: Ctrl-hover the hex to preview it, double-click the hex to open it.' });
+			el.createDiv({ cls: 'setting-item-description', text: `The first is the principal note: ${MOD}-hover the hex to preview it, double-click the hex to open it.` });
 		}
 		new Setting(el)
 			.addButton((b) =>
@@ -741,7 +748,7 @@ export class InspectorView extends ItemView {
 		);
 		new Setting(el)
 			.setName('Region brush removes')
-			.setDesc('Off: a drag adds hexes. Ctrl-drag always does the other.')
+			.setDesc(`Off: a drag adds hexes. ${MOD}-drag always does the other.`)
 			.addToggle((t) => t.setValue(state.regionErase).onChange((v) => map.setRegionErase(v)));
 
 		// Its note: where its encounters are.
@@ -831,15 +838,9 @@ export class InspectorView extends ItemView {
 			const text = row.createDiv({ cls: 'hexlore-roll-text', text: e.line });
 			for (const line of e.detail) text.createDiv({ cls: 'hexlore-roll-detail', text: line });
 			const action = (icon: string, label: string, run: () => void) => {
-				const b = row.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': label, role: 'button', tabindex: '0' } });
+				const b = asButton(row.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': label } }));
 				setIcon(b, icon);
 				b.addEventListener('click', run);
-				b.addEventListener('keydown', (k) => {
-					if (k.key === 'Enter' || k.key === ' ') {
-						k.preventDefault();
-						run();
-					}
-				});
 			};
 			action('copy', 'Copy', () => void navigator.clipboard.writeText(entryText(e)).then(() => new Notice('Copied.')));
 			action('file-plus', session ? `Add to “${session.basename}”` : 'Add to the session note (none yet)', () => void addToSessionNote(this.app, index, e));

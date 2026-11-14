@@ -22,6 +22,29 @@ export const PORT_LAST = 5180;
 /** Largest accepted vote body; a vote is ~100 bytes. */
 const MAX_VOTE_BODY = 2048;
 
+/** Voters one device (remote address) may hold: room for a table sharing a
+ *  tablet, not enough to fill the tally (MAX_VOTERS) alone. */
+export const MAX_VOTERS_PER_ADDRESS = 8;
+
+/** A device that polled the map within this long counts as connected. */
+export const CONNECTED_MS = 10_000;
+
+/** Is [host] (a Host header's name, without the port) one this server may
+ *  be reached by? An IP address, localhost, or one of [names] (this
+ *  computer's own). Any other name is a web page's domain pointed at this
+ *  computer (DNS rebinding): refused, so no page the GM visits can read the
+ *  map or vote. */
+export function hostAllowed(host: string, names: readonly string[] = []): boolean {
+	const h = host.toLowerCase().replace(/\.$/, '');
+	if (h === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || /^\[[0-9a-f:.]+\]$/.test(h)) return true;
+	return names.some((n) => n.toLowerCase() === h);
+}
+
+/** The name part of a Host header: `[::1]:5174` → `[::1]`, `pc:5174` → `pc`. */
+function hostName(header: string): string {
+	return header.startsWith('[') ? header.slice(0, header.indexOf(']') + 1) : header.replace(/:\d+$/, '');
+}
+
 const STATIC: Record<string, [file: string, type: string]> = {
 	'/': ['index.html', 'text/html; charset=utf-8'],
 	'/static/player.css': ['player.css', 'text/css; charset=utf-8'],
@@ -53,6 +76,9 @@ export interface PlayerServerOptions {
 	payload: () => PlayerPayload;
 	/** A vote was cast or withdrawn. */
 	onVotesChanged?: () => void;
+	/** This computer's names a player may use besides its IP addresses
+	 *  (`os.hostname()`, its `.local` name). */
+	hostnames?: readonly string[];
 }
 
 /** A short, stable tag for [text] (cyrb53): an ETag, not a security hash. */
@@ -75,6 +101,10 @@ export class PlayerServer {
 	private server: Server | null = null;
 	private host: string | null = null;
 	port: number | null = null;
+	/** Voter id → the address that cast it (for the per-device cap). */
+	private readonly voterAddress = new Map<string, string>();
+	/** Remote address → when it last asked for the map. */
+	private readonly lastPoll = new Map<string, number>();
 
 	constructor(private readonly opts: PlayerServerOptions) {}
 
@@ -116,6 +146,17 @@ export class PlayerServer {
 		throw new Error(`no free port in ${PORT_FIRST}–${PORT_LAST}: ${(last as Error | null)?.message ?? ''}`);
 	}
 
+	/** Devices (remote addresses) that polled the map in the last
+	 *  CONNECTED_MS before [now]. Players on this computer count as one. */
+	connectedCount(now = Date.now()): number {
+		let n = 0;
+		for (const [addr, at] of this.lastPoll) {
+			if (now - at > CONNECTED_MS) this.lastPoll.delete(addr);
+			else n++;
+		}
+		return n;
+	}
+
 	/** Stop serving; the ballot box goes with it. */
 	async stop(): Promise<void> {
 		const s = this.server;
@@ -123,6 +164,8 @@ export class PlayerServer {
 		this.host = null;
 		this.port = null;
 		this.votes.clear();
+		this.voterAddress.clear();
+		this.lastPoll.clear();
 		if (!s) return;
 		await new Promise<void>((resolve) => {
 			s.close(() => resolve());
@@ -135,6 +178,7 @@ export class PlayerServer {
 		try {
 			const url = new URL(req.url ?? '/', 'http://player.local');
 			res.setHeader('X-Content-Type-Options', 'nosniff');
+			if (!hostAllowed(hostName(req.headers.host ?? ''), this.opts.hostnames)) return this.status(res, 421);
 			const asset = STATIC[url.pathname];
 			if (asset) return this.serveAsset(res, ...asset);
 			switch (url.pathname) {
@@ -164,6 +208,7 @@ export class PlayerServer {
 	}
 
 	private serveMap(req: IncomingMessage, res: ServerResponse): void {
+		this.lastPoll.set(addressOf(req), Date.now());
 		let p: PlayerPayload;
 		try {
 			p = this.opts.payload();
@@ -190,6 +235,10 @@ export class PlayerServer {
 	 *  party may point at somewhere unseen. */
 	private async vote(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		if (req.method !== 'POST') return this.status(res, 405);
+		// A page from elsewhere may post here (a form or fetch needs no CORS to
+		// send): only the player page's own origin votes.
+		const origin = req.headers.origin;
+		if (origin !== undefined && !sameOrigin(origin, req.headers.host ?? '')) return this.status(res, 403);
 		if (Number(req.headers['content-length'] ?? 0) > MAX_VOTE_BODY) return this.status(res, 413);
 		const text = await readBody(req, MAX_VOTE_BODY);
 		if (text === null) return this.status(res, 413);
@@ -213,7 +262,14 @@ export class PlayerServer {
 			}
 			const q = b.q as number, r = b.r as number;
 			if (!cellInGrid(q, r, grid)) return this.status(res, 400);
-			accepted = this.votes.cast(voter, hexIdFor(q, r), b.name);
+			const addr = addressOf(req);
+			const known = !!this.votes.voteOf(voter);
+			const held = [...this.voterAddress].filter(([id, a]) => a === addr && id !== voter && this.votes.voteOf(id)).length;
+			if (!known && held >= MAX_VOTERS_PER_ADDRESS) accepted = false;
+			else {
+				accepted = this.votes.cast(voter, hexIdFor(q, r), b.name);
+				if (accepted) this.voterAddress.set(voter, addr);
+			}
 		} else {
 			accepted = this.votes.clearVoter(voter);
 		}
@@ -229,6 +285,20 @@ export class PlayerServer {
 	private status(res: ServerResponse, code: number): void {
 		res.writeHead(code);
 		res.end();
+	}
+}
+
+/** The remote address, IPv4-mapped IPv6 written as IPv4. */
+function addressOf(req: IncomingMessage): string {
+	return (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+}
+
+/** Does the Origin header name the host the request was sent to? */
+function sameOrigin(origin: string, host: string): boolean {
+	try {
+		return new URL(origin).host.toLowerCase() === host.toLowerCase();
+	} catch {
+		return false;
 	}
 }
 

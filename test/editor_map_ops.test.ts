@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MapEditor } from '../src/edit/editor';
+import { RenameLog, withLinkPath } from '../src/notes/link_renames';
 import { encodeAll } from '../src/storage/map_codec';
 import { MapStore } from '../src/storage/map_store';
 import { fixtureMap } from './helpers/fixture_map';
@@ -30,6 +31,24 @@ describe('deleting hexes', () => {
 		expect(store.model.getHex(0, 0)!.terrain).toBe('forest');
 		expect(store.model.threads.size).toBe(1);
 		expect(editor.links.get('q0_r0')).toEqual(['Home']);
+	});
+});
+
+describe('undo after a note was renamed', () => {
+	it('links the note under its new name, keeping the alias', async () => {
+		const { editor, written } = await setup();
+		editor.links.set('q0_r0', ['Home|our home', 'Gone']);
+		const log = new RenameLog();
+		// As the view does: a link that no longer resolves follows the renames.
+		editor.fixLink = (link) => {
+			const now = log.follow(link);
+			return now ? withLinkPath(link, now.replace(/\.md$/, '').split('/').pop()!) : link;
+		};
+		editor.deleteHexes([[0, 0]]);
+		log.record('Home.md', 'Places/Farmstead.md');
+		editor.undoLast();
+		expect(editor.links.get('q0_r0')).toEqual(['Farmstead|our home', 'Gone']);
+		expect(written.at(-1)).toEqual(new Map([['q0_r0', ['Farmstead|our home', 'Gone']]]));
 	});
 });
 
@@ -178,6 +197,18 @@ describe('reading the index while link writes are in flight', () => {
 		finish();
 		await Promise.resolve();
 		editor.linksFromIndex(new Map([['q0_r0', ['Home']]])); // written: the file wins again
+		expect(editor.hexNotes('q0_r0')).toEqual(['Home']);
+	});
+
+	it('reports a failed write, which a read of the index then drops', async () => {
+		const { editor } = await setup();
+		const failures: unknown[] = [];
+		editor.linkWriteFailed = (e) => failures.push(e);
+		editor.linkWriter = () => Promise.reject(new Error('index is gone'));
+		editor.setHexNotes('q0_r0', ['Home', 'Ruins'], 'Link');
+		await new Promise((r) => setTimeout(r, 0));
+		expect(failures.map((e) => (e as Error).message)).toEqual(['index is gone']);
+		editor.linksFromIndex(new Map([['q0_r0', ['Home']]]));
 		expect(editor.hexNotes('q0_r0')).toEqual(['Home']);
 	});
 });

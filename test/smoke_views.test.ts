@@ -6,6 +6,7 @@
 
 import './mocks/dom';
 import { readFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 // The mock itself (the same module the plugin gets as 'obsidian'), for its
 // test helpers.
@@ -454,7 +455,26 @@ describe('the top bar (Flutter decision 30)', () => {
 		const all = m.getSuggestions('');
 		expect(all.length).toBeGreaterThan(0);
 		expect(all.some((e) => e.label === 'Hermit')).toBe(true);
+		// Coordinates, as the map shows them, come first.
+		expect(m.getSuggestions('C4')[0]).toMatchObject({ label: 'C4', kind: 'coords' });
+		expect(m.getSuggestions('Z99').some((e) => e.kind === 'coords')).toBe(false); // off the map
 		m.close();
+	});
+
+	it('the top bar and the tool strip work from the keyboard', () => {
+		const search = bar().querySelectorAll<HTMLElement>('.hexlore-topbar-icon-button')[1]!;
+		expect(search.getAttribute('role')).toBe('button');
+		expect(search.tabIndex).toBe(0);
+		const before = Modal.open.length;
+		search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(Modal.open.length).toBe(before + 1);
+		Modal.open.at(-1)!.close();
+		const fog = map.contentEl.querySelector<HTMLElement>('.hexlore-tool[data-tool="fog"]')!;
+		fog.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+		expect(fog.getAttribute('aria-pressed')).toBe('true');
+		map.contentEl.querySelector<HTMLElement>('.hexlore-tool[data-tool="select"]')!.click();
+		// Undo and redo are the top bar's only.
+		expect(map.contentEl.querySelectorAll('.hexlore-toolbar [aria-label^="Undo"], .hexlore-toolbar [aria-label="Nothing to undo"]')).toHaveLength(0);
 	});
 
 	it('adventures, session notes and players menus build', () => {
@@ -678,6 +698,52 @@ describe('the player view control', () => {
 		if (res) expect(res.status).toBe(200);
 		await plugin.players.stop();
 		expect(plugin.players.running).toBe(false);
+	});
+
+	it('"Travel here" on a vote reveals, clears the votes and notes the trip', async () => {
+		const file = map.mapState().file!;
+		await plugin.players.start(file);
+		for (const m of [...Modal.open]) m.close();
+		const editor = map.mapState().editor!;
+		const target = 'q2_r2';
+		expect(editor.model.revealed.has(target)).toBe(false);
+		const control = plugin.players as unknown as { server: { votes: { cast(v: string, h: string, n: string): boolean } }; changed(): void };
+		control.server.votes.cast('v1', target, 'Mara');
+		control.server.votes.cast('v2', target, 'Bo');
+		control.changed();
+		const panel = app.workspace.getLeavesOfType(INSPECTOR_VIEW)[0]!.view as unknown as InspectorView;
+		app.workspace.activeLeaf = mapLeaf;
+		app.workspace.trigger('active-leaf-change', mapLeaf);
+		await tick(20);
+		panel.contentEl.querySelector<HTMLElement>('[aria-label^="Travel to"]')!.click();
+		const modal = Modal.open.at(-1)!;
+		expect(modal.titleEl.textContent).toBe('Travel to C3?');
+		Array.from(modal.contentEl.querySelectorAll('button')).find((b) => b.textContent === 'Travel')!.click();
+		await tick(20);
+		expect(editor.model.revealed.has(target)).toBe(true);
+		expect(plugin.players.votes()).toEqual([]);
+		expect(app.vault.textOf('Campaign/GM notes/Todo.md')).toMatch(/\n- \d\d:\d\d · Travelled to C3 \(2 votes: Mara, Bo\)\n$/);
+		editor.undoLast();
+		expect(editor.model.revealed.has(target)).toBe(false);
+		await plugin.players.stop();
+	});
+
+	it('two starts at once leave one server, and stop closes it', async () => {
+		const file = map.mapState().file!;
+		const listening = (port: number) =>
+			new Promise<boolean>((resolve) => {
+				const s = connect(port, '127.0.0.1');
+				s.once('connect', () => (s.destroy(), resolve(true)));
+				s.once('error', () => resolve(false));
+			});
+		const free = async () => (await Promise.all([5174, 5175, 5176, 5177, 5178, 5179, 5180].map(listening))).filter(Boolean).length;
+		const before = await free();
+		await Promise.all([plugin.players.start(file), plugin.players.start(file)]);
+		for (const m of [...Modal.open]) m.close();
+		expect(plugin.players.running).toBe(true);
+		expect(await free()).toBe(before + 1);
+		await plugin.players.stop();
+		expect(await free()).toBe(before);
 	});
 });
 

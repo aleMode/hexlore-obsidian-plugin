@@ -3,6 +3,7 @@
 // turns it off; a short notice with the link replaces it from then on.
 
 import { Modal, Notice, Setting, type App } from 'obsidian';
+import { qrSvg } from './qr';
 
 const SHOW_KEY = 'hexlore-players-instructions';
 
@@ -36,6 +37,12 @@ class PlayerViewStartedModal extends Modal {
 			.addButton((b) => b.setButtonText('Copy link').setCta().onClick(() => void navigator.clipboard.writeText(url).then(() => new Notice(`Copied ${url}`))))
 			.addButton((b) => b.setButtonText('Open in browser').onClick(() => window.open(url)))
 			.settingEl.addClass('hexlore-players-link');
+		// Phones join by scanning it (only a LAN link is reachable from one).
+		if (this.lan) {
+			const qr = el.createDiv({ cls: 'hexlore-players-qr' });
+			qr.appendChild(qrSvg(el.doc, url, 180)).setAttribute('aria-label', `QR code of ${url}`);
+			qr.createDiv({ cls: 'setting-item-description', text: 'Players can scan this with a phone camera.' });
+		}
 
 		const steps = el.createEl('ol', { cls: 'hexlore-players-steps' });
 		steps.createEl('li', {
@@ -45,7 +52,7 @@ class PlayerViewStartedModal extends Modal {
 		});
 		steps.createEl('li', { text: 'Players see only the hexes you reveal: drag with the fog tool (7), or right-click a hex and reveal it. The players menu can reveal them all at once.' });
 		steps.createEl('li', { text: 'Their page follows your edits by itself. A player who clicks a hex votes for where the party goes next: votes show on your map and in the map panel.' });
-		steps.createEl('li', { text: 'While players are connected, the players button in the top bar is lit and the status bar shows the link (click it to copy). Click the players button again to stop.' });
+		steps.createEl('li', { text: 'While the view runs, the players button in the top bar is lit and the status bar shows the link and how many devices are connected (click it to copy the link). Click the players button for the link again, or to stop.' });
 
 		new Setting(el)
 			.setName('Show these instructions each time')

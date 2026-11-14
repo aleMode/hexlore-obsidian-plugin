@@ -34,10 +34,11 @@ export function fileMenu(menu: Menu, file: TFile, a: MenuActions): void {
 		const item = (title: string, icon: string, run: () => void) => menu.addItem((i) => i.setTitle(title).setIcon(icon).setSection(SECTION).onClick(run));
 		item('Open as map', 'hexagon', () => a.openMap(file));
 		item('Open as Markdown', 'file-text', () => a.openMarkdown(file));
-		if (a.serves(file)) {
+		// Phones and tablets cannot run the server: no entry rather than one that apologises.
+		if (Platform.isDesktopApp && a.serves(file)) {
 			item('Copy the player link', 'copy', () => a.copyPlayerLink());
 			item('Stop the player view', 'square', () => a.stopPlayers());
-		} else {
+		} else if (Platform.isDesktopApp) {
 			item('Start the player view', 'cast', () => a.startPlayers(file));
 		}
 		if (Platform.isDesktopApp) item('Export as a campaign folder…', 'folder-output', () => a.exportCampaign(file));

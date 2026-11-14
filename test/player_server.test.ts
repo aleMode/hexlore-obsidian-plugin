@@ -112,6 +112,41 @@ describe('the player server, on a real socket', () => {
 		expect(big.status).toBe(413);
 	});
 
+	it('answers only requests addressed to it by IP or localhost, and same-origin votes', async () => {
+		const get = (host: string) => fetch(url('/api/map'), { headers: { Host: host } });
+		expect((await get(`127.0.0.1:${server.port}`)).status).toBe(200);
+		expect((await get(`localhost:${server.port}`)).status).toBe(200);
+		expect((await get(`192.168.1.20:${server.port}`)).status).toBe(200);
+		expect((await get(`[::1]:${server.port}`)).status).toBe(200);
+		// A web page's own name pointed at this computer (DNS rebinding).
+		expect((await get(`evil.example:${server.port}`)).status).toBe(421);
+		const vote = (origin: string) =>
+			fetch(url('/api/vote'), { method: 'POST', headers: { Origin: origin }, body: JSON.stringify({ voter: 'v1', q: 1, r: 1 }) });
+		// Another site's page posting a vote to the GM's computer.
+		expect((await vote('https://evil.example')).status).toBe(403);
+		expect((await vote(`http://127.0.0.1:${server.port}`)).status).toBe(200);
+	});
+
+	it('lets one device hold at most 8 voters', async () => {
+		const vote = (voter: string) => fetch(url('/api/vote'), { method: 'POST', body: JSON.stringify({ voter, q: 1, r: 1 }) });
+		for (let i = 0; i < 8; i++) expect((await vote(`v${i}`)).status).toBe(200);
+		expect(server.votes.voterCount).toBe(8);
+		await vote('v8');
+		expect(server.votes.voterCount).toBe(8);
+		expect((await vote('v3')).status).toBe(200); // a known voter can change their mind
+		server.votes.clear();
+		await vote('v8');
+		expect(server.votes.voterCount).toBe(1);
+	});
+
+	it('counts the devices that polled the map lately', async () => {
+		expect(server.connectedCount()).toBe(0);
+		await fetch(url('/api/map'));
+		await fetch(url('/api/map'));
+		expect(server.connectedCount()).toBe(1);
+		expect(server.connectedCount(Date.now() + 60_000)).toBe(0);
+	});
+
 	it('stopping empties the ballot box; a second server takes the next port', async () => {
 		const other = new PlayerServer({ http, assets: PLAYER_ASSETS, payload });
 		try {

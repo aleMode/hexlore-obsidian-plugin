@@ -176,6 +176,8 @@ export class MapStore {
 		const keys = [...this.dirty.values()];
 		this.dirty.clear();
 		const written: FileKey[] = [];
+		/** Changed on disk since we last read or wrote them. */
+		const changedOutside: string[] = [];
 		for (const key of keys) {
 			const path = pathOf(key);
 			if (this.broken.has(path)) {
@@ -190,6 +192,16 @@ export class MapStore {
 			const text = 'layer' in key ? encodeLayer(this.model, key.layer) : encodeChunk(this.model, key.chunk);
 			const onDisk = this.disk.get(path) ?? null;
 			if (text === onDisk) continue;
+			// A sync or a git pull may have changed the file while its change
+			// event waits in the registry's batch: writing now would overwrite
+			// the pulled version without a word. Reload it instead (the edit to
+			// it is discarded and reported, as when the event comes first).
+			const now = await this.fs.read(path);
+			if (now !== onDisk) {
+				this.dirty.set(path, key);
+				changedOutside.push(path);
+				continue;
+			}
 			// Remember first: the change event may arrive before the write returns.
 			this.disk.set(path, text);
 			try {
@@ -203,6 +215,7 @@ export class MapStore {
 			}
 		}
 		if (written.length) this.emit({ kind: 'saved', files: written });
+		if (changedOutside.length) await this.reload(changedOutside);
 	}
 
 	// ----- changes from outside ----------------------------------------------
@@ -211,6 +224,10 @@ export class MapStore {
 	 *  Each one we own and did not write ourselves is reloaded on its own. */
 	async externalChange(rels: Iterable<string>): Promise<void> {
 		await this.flushing;
+		await this.reload(rels);
+	}
+
+	private async reload(rels: Iterable<string>): Promise<void> {
 		const reloaded: FileKey[] = [];
 		const discarded: FileKey[] = [];
 		for (const rel of new Set(rels)) {

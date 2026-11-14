@@ -79,7 +79,7 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 | `src/importer/` | Port of Flutter's importer on plain RGBA rasters. |
 | `src/sketch/` | Bucket fill and hexify. |
 | `src/dev/` | The synthetic 100 × 100 map and the renderer benchmark. |
-| `src/main.ts` | The plugin: views, the three commands kept for hotkeys, the index → map view switch (`WorkspaceLeaf.prototype.setViewState` wrapped, undone on unload, plus a `file-open` fallback), rename following. |
+| `src/main.ts` | The plugin: views, the three commands kept for hotkeys, the index → map view switch (`WorkspaceLeaf.prototype.setViewState` wrapped through `patch.ts` `around`: on unload it becomes a pass-through if another plugin wrapped it after us, so their wrapper survives; plus a `file-open` fallback), rename following. |
 | `src/plugin_menus.ts` | The ribbon icon's menu and the file-menu entries (right-click a map file or a note); everything else is in the Map menu. |
 
 ### Data flow
@@ -98,7 +98,9 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 6. The store flushes dirty files after 500 ms, and on quit. It recognises its
    own writes; a change made elsewhere (git pull, another device) reloads
    that file only, and undo entries that touched it are dropped with a
-   notice.
+   notice. Before writing a file, a flush reads it: if it changed since the
+   store last read or wrote it (a sync whose event still waits in the
+   registry's 250 ms batch), the flush reloads it instead of writing over it.
 
 ## 5. The files
 
@@ -193,7 +195,13 @@ are kept (`extra` / `raw`) and written back.
 
 - A hex's notes are the links on its `## Hexes` line; the first is the
   principal note. The editor writes changes through a link writer
-  (`vault.process`) applied to the file as it is at that moment.
+  (`vault.process`) applied to the file as it is at that moment. A failed
+  write calls `linkWriteFailed`: the view says so and reads the index again.
+- Undo snapshots keep link TEXT. `editor.fixLink` brings a kept text up to
+  date when it is written back: a link that no longer resolves follows this
+  session's renames (`notes/link_renames.ts`, fed by `main.ts` from the
+  vault's rename events; `noteRenames` in `vault_notes.ts`), keeping its
+  heading and alias.
 - `note_meta.ts` holds the conventions: `type: npc | quest | place`,
   `location` (links to place notes, never coordinates), templates
   (`{{title}}`, `{{hex}}`, `{{map}}`, `{{date}}`, `{{time}}`). A note stands
@@ -218,7 +226,15 @@ are kept (`extra` / `raw`) and written back.
 and `POST /api/vote` (travel votes, in memory). Ports 5174–5180, localhost
 unless "Serve on the local network" is on. `control.ts` serves one map at a
 time from its **live** store model, refuses a newer format (503) and reports
-a failed start to the GM. The Players image export refuses a newer format
+a failed start to the GM. Start and stop run one at a time (a queue in
+`control.ts`), so two quick starts cannot orphan a server. The server
+answers only a `Host` that is an IP address, `localhost` or this computer's
+name (DNS rebinding: 421 otherwise), takes a vote only from its own
+`Origin` (403), lets one remote address hold at most
+`MAX_VOTERS_PER_ADDRESS` (8) voters, and counts the addresses that polled
+`/api/map` in the last 10 s (`connectedCount`, the status bar). The started
+dialog draws a QR code of a LAN link (`qr.ts`, qrcode-generator, as an SVG
+built with the DOM). The Players image export refuses a newer format
 the same way, in `render/players_scene.ts`. The filter is the ONLY path to players, and it is
 map-only: notes are never read.
 
