@@ -373,6 +373,41 @@ to move between them. Settled with the GM, for now:
   the map files and the player filter, a `format` bump per decision 31), so
   it starts in Flutter (software_hexlore#7).
 
+### 1.12 The party, travel time, the session log (2026-11-14)
+
+- **The party is kept in `data.json`** (`party`, by index path, following
+  renames like the atlas layout), never in the map files or the index: the
+  map format does not change. One position and one travel time per map.
+- **Players see the party, served by the plugin alone.** At the GM's
+  request this skips WORKFLOW §5 B (a change to what players see starts in
+  Flutter, with a `format` bump, decision 31). What that rule protects is
+  that both apps' players see the same thing: Flutter's player view shows
+  no party. The marker is served outside the filter (`/api/party`, only
+  when its hex is REVEALED, so it never tells players about unexplored
+  ground) and drawn by a script of the plugin's own
+  (`server/party_script.ts`) added to the served page, never to
+  `vendor/player/`. Doing it in Flutter is software_hexlore#7.
+- **Travel time** is the cost to ENTER a hex, by terrain or by a road or
+  trail through it, in hours for hexes of a reference size (3 miles) and
+  scaled linearly to each map's hex size; shown in travel days (8 hours).
+  The defaults are the GM's own table: 8 h mountain, desert, swamp (and
+  volcano); 4 h forest, jungle, tundra (badlands too, not a terrain here);
+  2 h plains, hills (steppe), blank; 1 h road; sea and lake impassable. A
+  move of several hexes charges only the hex it arrives in (the GM's
+  choice: they move the party hex by hex, or edit the time). Rejected for
+  now: pace × multiplier, cheapest-path cost.
+- **Terrain heights for line of sight are a setting**, passed to the
+  editor (`terrainHeight`); the ported `core/line_of_sight.ts` keeps
+  decision 5b's table as the default and is unchanged.
+- **The session log** is a `## Session log` section of the session note,
+  created on first use; rolls, checks, trips, the party placed and each fog
+  step the GM takes (a drag, a menu reveal, reveal all; never an undo) are
+  appended with the time. A trip's reveal is part of its own line.
+- **Preview as players** swaps the map view's scene for the one built from
+  the player filter's payload (`render/players_scene.ts`, as the Players
+  image export), rebuilt after each edit; not saved, so a map always opens
+  as the GM's.
+
 ---
 
 ## 2. Step 1: the Flutter side (done)

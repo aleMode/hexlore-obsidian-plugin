@@ -107,6 +107,30 @@ describe('the map editor', () => {
 		expect(editor.sightFrom([[0, 3]]).length).toBe(5); // clamped at the grid edge
 	});
 
+	it('tells the session log of each fog step, never of undo, and not when quiet', async () => {
+		const { editor } = await setup();
+		const told: string[] = [];
+		editor.fogDone = (reveal, cells, label) => told.push(`${reveal ? '+' : '-'}${cells.length} ${label}`);
+		editor.paintFog([[2, 2]], true);
+		editor.paintFog([[3, 2]], true);
+		editor.endFogStroke();
+		editor.undoLast();
+		editor.redoLast();
+		editor.quietFog(() => editor.setRevealed([[4, 4]], true));
+		editor.setRevealed([[4, 4]], false);
+		expect(told).toEqual(['+2 Reveal 2 hexes', '-1 Hide 1 hex']);
+	});
+
+	it('takes terrain heights for line of sight from the settings when given', async () => {
+		const { editor } = await setup();
+		expect(editor.sightFrom([[5, 5]]).length).toBe(7); // flat ground: the ring only
+		editor.terrainHeight = () => 1; // say every terrain stands 1 high: unpainted ground has no record, still 0
+		editor.paint([[5, 5]], PaintPick.biome('plains'));
+		editor.endStroke();
+		editor.terrainHeight = (t) => (t === 'plains' ? 2 : 0);
+		expect(editor.sightFrom([[5, 5]]).length).toBe(19); // two rings
+	});
+
 	it('hides a feature from players, with its name', async () => {
 		const { editor, store } = await setup();
 		store.model.getHex(1, 0)!.featureHidden = false;

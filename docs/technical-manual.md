@@ -73,7 +73,8 @@ core  ←  storage  ←  view / render / server / importer / sketch / convert
 | `src/render/` | The renderer. `scene.ts` (render model + caches), `painter.ts` (paints a scene rect), `tiles.ts` + `map_canvas.ts` (tiled pan, stretched zoom), `textures.ts` (atlas pages for sprites and texture slices), `art.ts` (the art registry), `vendor.ts` (loads the vendored JS spec and tables), `image_export.ts`, `players_scene.ts`. |
 | `src/edit/` | Editing without Obsidian: `editor.ts` (every map change), `undo.ts`, `editors.ts` (one editor per store). |
 | `src/view/` | Obsidian views and UI: `map_view.ts` (the map), `top_bar.ts`, `toolbar.ts`, `display_panel.ts`, `inspector_view.ts` (the Map panel), `open_note.ts` (a note opened from the map: Page preview's window via `hover-link`, or a pane), `sections_view.ts`, `sketch_mode.ts`, `import_wizard.ts`, modals. |
-| `src/notes/` | Note conventions (`note_meta.ts`: kinds, `location`, templates, which hexes a note stands for), encounter tables (`encounter_table.ts`), NPC page sections. |
+| `src/notes/` | Note conventions (`note_meta.ts`: kinds, `location`, templates, which hexes a note stands for), encounter tables (`encounter_table.ts`), the session log's text (`session_log.ts`), renames for kept links (`link_renames.ts`), NPC page sections. |
+| `src/party/` | The party and travel time (design §1.12): `travel.ts` (pure: entry cost by terrain and road, scaled by hex size; days and hours), `party.ts` (pure: the per-map book in `data.json`), `party_control.ts` (Obsidian side: move, place, time, `PARTY_EVENT`). |
 | `src/server/` | The player server (`player_server.ts`, Node `http` passed in), its Obsidian side (`control.ts`), the player page assets. |
 | `src/convert/` | "Export as a campaign folder…": `flutter_export.ts` (pure planner), `write.ts` (Node `fs`), `export_command.ts`. |
 | `src/importer/` | Port of Flutter's importer on plain RGBA rasters. |
@@ -219,6 +220,23 @@ are kept (`extra` / `raw`) and written back.
   ported unchanged as `core/region_encounters.ts` for the conformance
   fixtures and is not used by the views (software_hexlore#7).
 
+## 8b. The party, the session log, the preview
+
+- `party/party_control.ts` keeps the party per map in `settings.party`
+  (saved with the plugin data, followed on rename). The map view draws it
+  (`render/overlay.ts` `drawParty`, hollow on an unrevealed hex), the hex
+  menu places or moves it, `view/travel_modal.ts` is the trip (time from
+  `party/travel.ts` `entryCost`, editable; the reveal inside
+  `editor.quietFog` so it is logged once, with the trip), and the map
+  panel shows the time.
+- `view/session_note.ts` finds the session note and appends to its log
+  (`notes/session_log.ts`), one write at a time per note; `logEvent` obeys
+  the "Session log" setting. The editor reports each fog step through
+  `fogDone` (never undo / redo).
+- Preview as players: `map_view.ts` `setPreviewPlayers` builds the scene
+  from `filterCampaignForPlayer` → `playersSceneData`; while it is on,
+  editor events schedule a rebuild instead of patching the scene.
+
 ## 9. Player server
 
 `src/server/player_server.ts` serves the player page (vendored assets),
@@ -234,7 +252,12 @@ name (DNS rebinding: 421 otherwise), takes a vote only from its own
 `MAX_VOTERS_PER_ADDRESS` (8) voters, and counts the addresses that polled
 `/api/map` in the last 10 s (`connectedCount`, the status bar). The started
 dialog draws a QR code of a LAN link (`qr.ts`, qrcode-generator, as an SVG
-built with the DOM). The Players image export refuses a newer format
+built with the DOM). The served page gets the plugin's party script
+(`party_script.ts`, added by `assets.ts` after the page's own scripts; it
+wraps the page's `drawVoteMarkers` and polls `/api/party`, which names the
+party's hex only while it is revealed). `test/party_page.test.ts` runs the real
+vendored page in jsdom against a live server, so a Flutter change to
+`player.js` that breaks the wrap fails there. The Players image export refuses a newer format
 the same way, in `render/players_scene.ts`. The filter is the ONLY path to players, and it is
 map-only: notes are never read.
 

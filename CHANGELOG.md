@@ -45,6 +45,16 @@ entries go under *Unreleased*; a release moves them under its version.
 - Quick jump (Ctrl+K) takes coordinates: `F3`, or `q5 r-2`.
 - The top bar, the tool strip, the palette, Display & overlays and the panel's
   icon buttons can be reached with Tab and pressed with Enter or Space.
+- **The party:** place it on a hex or move it there (hex menu); a trip adds
+  the hours to enter that hex to the map's **time travelled**, shown in the
+  Map panel in travel days. Players see the party on a revealed hex.
+- **Travel settings:** the hours to enter each terrain (or a hex with a road
+  or trail), for a given hex size (3 miles by default, scaled to each map's
+  hex size), the hours in a travel day, and the terrain heights line of sight
+  uses.
+- **Session log:** encounter rolls and checks, trips and reveals are added
+  with the time under "## Session log" in the session note (setting).
+- **Preview as players** in Display & overlays: the map as players see it.
 
 ### Changed
 - Renderer: tiles, atlas, redraws limited to what an edit touched
@@ -77,6 +87,10 @@ entries go under *Unreleased*; a release moves them under its version.
 - While the player view runs, clicking the players button opens its menu
   (copy the link, stop) instead of stopping at once and dropping the votes.
 
+- **Travel here** on a vote is now a trip: the party moves, its time grows,
+  and the dialog asks for the time (editable) as well as the reveal.
+- Encounter rolls go to the session log on their own; the rolls list's
+  "Add to the session note" button shows only with the log turned off.
 - Undo and redo are in the top bar only; the tool strip's and the Sketch
   strip's own pair are gone (the top bar's undoes the sketch in the Sketch
   view).

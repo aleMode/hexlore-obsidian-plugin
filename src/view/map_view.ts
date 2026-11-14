@@ -20,7 +20,7 @@ import { hexLine } from '../core/line_of_sight';
 import { MapScale } from '../core/map_scale';
 import type { Cell, EditorEvent, LineKind, MapEditor, ThreadSpec } from '../edit/editor';
 import { editorFor } from '../edit/editors';
-import { HOVER_GLOW, SELECT_GLOW, brushCells, drawVotes, highlightCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
+import { HOVER_GLOW, SELECT_GLOW, brushCells, drawParty, drawVotes, highlightCells, drawAnchorField, drawGhost, drawBand, drawBrush, drawHandle, drawLine, drawRuler, drawScaleBar, nearestIndex, strokeCells, type OverlayFrame } from '../render/overlay';
 import { regionInk } from '../render/painter';
 import { sceneHexOf, sceneRegionOf, sceneRiversOf, sceneRoutesOf, sceneThreadOf } from '../render/scene_from_model';
 import { MAX_BRUSH, ROUTE_KINDS, Toolbar, TOOLS, pickFromStored, pickToStored, type StoredPick, type ToolId } from './toolbar';
@@ -52,7 +52,10 @@ import { displayIdFor } from '../core/hex';
 import { parseJumpCoords } from '../core/quick_jump';
 import { threadColorGroups } from '../core/overlay_filter';
 import { ImageExportModal } from './image_export_modal';
-import { MOD } from './a11y';
+import { MOD, asButton } from './a11y';
+import { TravelModal, placeName } from './travel_modal';
+import { logEvent } from './session_note';
+import { PARTY_EVENT, type PartyControl } from '../party/party_control';
 import { ConfirmModal } from './inspector_view';
 import { rollRegion } from './encounter_roller';
 import { HexifyModal } from './hexify_modal';
@@ -288,6 +291,8 @@ export class MapView extends ItemView {
 			mapsTogether: () => void;
 			/** The Sections list in the left sidebar. */
 			showSections: () => void;
+			/** The party on each map (party/party_control.ts). */
+			party: PartyControl;
 		},
 	) {
 		super(leaf);
@@ -426,6 +431,13 @@ export class MapView extends ItemView {
 				}
 			}),
 		);
+		// The party moved: redraw its marker.
+		this.registerEvent(
+			(this.app.workspace as Events).on(PARTY_EVENT, () => {
+				this.canvas.paintOverlay();
+				this.broadcast();
+			}),
+		);
 		// Player votes come and go: redraw their badges.
 		this.registerEvent(
 			(this.app.workspace as Events).on(PLAYERS_EVENT, () => {
@@ -521,6 +533,18 @@ export class MapView extends ItemView {
 						const file = to ? this.app.vault.getAbstractFileByPath(to) : null;
 						return file instanceof TFile ? withLinkPath(link, this.app.metadataCache.fileToLinktext(file, source, true)) : link;
 					};
+					// Line of sight uses the heights in the Travel settings.
+					this.editor.terrainHeight = (t) => this.panel.party.travelSettings().heights[t] ?? 0;
+					// Each fog step the GM takes goes to the session log.
+					this.editor.fogDone = (reveal, cells, label) => {
+						const ed = this.editor;
+						const at = this.file ?? index;
+						if (!ed) return;
+						const all = /all hexes$/.test(label);
+						const names = cells.slice(0, 4).map((c) => placeName(ed, c));
+						const more = cells.length > names.length ? ` and ${cells.length - names.length} more` : '';
+						void logEvent(this.app, at, all ? `${reveal ? 'Revealed' : 'Hid'} all hexes (${cells.length})` : `${reveal ? 'Revealed' : 'Hid'} ${names.join(', ')}${more}`);
+					};
 					// A failed write is said, and the index read again: the map must not
 					// show links the file does not have.
 					this.editor.linkWriteFailed = (e) => {
@@ -544,6 +568,7 @@ export class MapView extends ItemView {
 		void this.loadUnderlay();
 		this.canvas.setScene(new MapScene(this.data));
 		this.applyOverlays();
+		if (this.previewPlayers) this.rebuildScene();
 		this.updateNotice();
 		this.refreshHeader();
 		this.canvas.resize();
@@ -584,7 +609,13 @@ export class MapView extends ItemView {
 	/** Rebuild the scene from the model, keeping the camera. */
 	private rebuildScene(): void {
 		if (!this.store) return;
-		this.data = sceneDataFromModel(this.store.model, new Set(this.links.keys()));
+		const preview = this.previewPlayers ? this.previewData() : null;
+		if (this.previewPlayers && !preview) {
+			this.previewPlayers = false;
+			this.previewBanner?.remove();
+			this.previewBanner = null;
+		}
+		this.data = preview ?? sceneDataFromModel(this.store.model, new Set(this.links.keys()));
 		this.canvas.setScene(new MapScene(this.data));
 		this.applyOverlays();
 		this.broadcast();
@@ -596,7 +627,7 @@ export class MapView extends ItemView {
 	private relinkScene(before: ReadonlySet<string>): void {
 		const scene = this.canvas.getScene();
 		const model = this.store?.model;
-		if (!scene || !model) return this.rebuildScene();
+		if (!scene || !model || this.previewPlayers) return this.rebuildScene();
 		const now = new Set(this.links.keys());
 		for (const id of new Set([...before, ...now])) {
 			if (before.has(id) === now.has(id)) continue;
@@ -723,6 +754,7 @@ export class MapView extends ItemView {
 			underlay: this.underlayName,
 			sketchOverlay: sk.overlay,
 			sketchOverlayMode: sk.overlayMode,
+			previewPlayers: this.previewPlayers,
 		};
 	}
 
@@ -771,7 +803,51 @@ export class MapView extends ItemView {
 			setOverlays: (change) => this.setOverlays(change),
 			showSketchOverlay: (shown, mode) => this.sketchMode.showOverlay(shown, mode),
 			removeUnderlay: () => void this.removeUnderlay(),
+			setPreviewPlayers: (on) => this.setPreviewPlayers(on),
 		});
+	}
+
+	// ----- preview as players (design §1.12) ---------------------------------------------
+
+	/** The map drawn from the player filter's payload, as the player view
+	 *  draws it; GM overlays (selection, votes, the party) stay on top. Not
+	 *  saved: a map always opens as the GM's. */
+	private previewPlayers = false;
+	private previewTimer = 0;
+	private previewBanner: HTMLElement | null = null;
+
+	setPreviewPlayers(on: boolean): void {
+		if (on === this.previewPlayers) return;
+		this.previewPlayers = on;
+		this.previewBanner?.remove();
+		this.previewBanner = null;
+		if (on) {
+			const b = asButton(this.stage.createDiv({ cls: 'hexlore-preview-banner', text: 'Preview as players: click to go back to the GM map' }));
+			b.addEventListener('pointerdown', (e) => e.stopPropagation());
+			b.addEventListener('click', () => this.setPreviewPlayers(false));
+			this.previewBanner = b;
+		}
+		this.rebuildScene();
+		this.displayPanel?.refresh();
+	}
+
+	/** The players' version changes with any edit: rebuilt shortly after. */
+	private schedulePreview(): void {
+		window.clearTimeout(this.previewTimer);
+		this.previewTimer = window.setTimeout(() => this.rebuildScene(), 120);
+	}
+
+	/** The scene data players get, or null (with a notice) when the map
+	 *  cannot be shown to them (a newer format). */
+	private previewData(): MapData | null {
+		const m = this.store?.model;
+		if (!m) return null;
+		try {
+			return playersSceneData(toPlain(filterCampaignForPlayer(m)) as JsonObject, m.meta.format);
+		} catch (e) {
+			new Notice(`No preview: ${(e as Error).message}`);
+			return null;
+		}
 	}
 
 	/** Fullscreen: the map view leaves its tab and covers the window (and
@@ -1154,6 +1230,13 @@ export class MapView extends ItemView {
 			return;
 		}
 		if (!scene || !model) return;
+		if (this.previewPlayers) {
+			if (e.kind === 'links') this.links = new Map([...this.editor!.links].map(([id, l]) => [id, [...l]]));
+			this.schedulePreview();
+			this.canvas.paintOverlay();
+			this.broadcast();
+			return;
+		}
 		const linked = new Set(this.links.keys());
 		switch (e.kind) {
 			case 'hexes':
@@ -1378,6 +1461,9 @@ export class MapView extends ItemView {
 					strokeCells(f, [hover], HOVER_GLOW, 2.5);
 				}
 			}
+			const party = this.panel.party.state(this.file).hex;
+			const pc = party ? cellOfId(party) : null;
+			if (pc && this.editor) drawParty(f, pc[0], pc[1], this.editor.model.revealed.has(party!));
 			drawVotes(f, this.panel.votes(this.file));
 			const g = this.gesture;
 			if (g?.kind === 'move' && g.moved) {
@@ -2663,8 +2749,33 @@ export class MapView extends ItemView {
 					.onClick(() => editor.removeRegionCells(g.id, cells)),
 			);
 		}
-		// Rolling for where the party is: each region here with a note.
+		// The party (design §1.12): one hex at a time.
 		const index = this.file;
+		if (index && !multi) {
+			const party = this.panel.party;
+			const here = party.state(index).hex === hexIdFor(cell[0], cell[1]);
+			menu.addSeparator();
+			if (!here) {
+				menu.addItem((i) =>
+					i
+						.setTitle('Move the party here…')
+						.setIcon('footprints')
+						.setDisabled(ro)
+						.onClick(() => new TravelModal({ app: this.app, index, editor, party }, cell).open()),
+				);
+			}
+			menu.addItem((i) =>
+				i
+					.setTitle(here ? 'Take the party off the map' : 'Place the party here')
+					.setIcon(here ? 'x' : 'flag')
+					.setDisabled(ro)
+					.onClick(() => {
+						party.place(index, here ? null : hexIdFor(cell[0], cell[1]));
+						if (!here) void logEvent(this.app, index, `The party is at ${placeName(editor, cell)}`);
+					}),
+			);
+		}
+		// Rolling for where the party is: each region here with a note.
 		const rollable = index ? editor.regionsContaining(cells).filter((g) => this.regionLinks.get(g.id)?.[0]) : [];
 		if (index && rollable.length) menu.addSeparator();
 		for (const g of rollable) {

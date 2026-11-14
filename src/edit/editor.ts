@@ -8,7 +8,7 @@
 import { cellInGrid, cellsInRect, gridPixelBounds } from '../core/geometry';
 import type { MapScale } from '../core/map_scale';
 import { Hex } from '../core/hex';
-import { hexIdFor } from '../core/hex_data';
+import { hexIdFor, type Terrain } from '../core/hex_data';
 import { encodeCompact } from '../core/json';
 import type { PaintPick } from '../core/hex_paint';
 import { heightOf, visibleFrom } from '../core/line_of_sight';
@@ -308,11 +308,33 @@ export class MapEditor {
 
 	private fogStroke: { reveal: boolean; cells: Map<string, Cell> } | null = null;
 
+	/** Terrain heights for line of sight (the Travel settings); null:
+	 *  decision 5b's defaults. */
+	terrainHeight: ((t: Terrain) => number) | null = null;
+
+	/** Told of each fog step the GM takes (a drag, a menu reveal, reveal all;
+	 *  never an undo or redo): the session log. */
+	fogDone: ((reveal: boolean, cells: Cell[], label: string) => void) | null = null;
+	private fogQuiet = 0;
+
+	/** Run [fn] without telling [fogDone] (a step logged by its caller, such
+	 *  as a trip that reveals what the party sees). */
+	quietFog<T>(fn: () => T): T {
+		this.fogQuiet++;
+		try {
+			return fn();
+		} finally {
+			this.fogQuiet--;
+		}
+	}
+
 	private pushFog(changed: Cell[], reveal: boolean, label?: string): void {
 		const cells = changed.map(([q, r]): Cell => [q, r]);
 		const n = cells.length;
+		const name = label ?? `${reveal ? 'Reveal' : 'Hide'} ${n} hex${n === 1 ? '' : 'es'}`;
+		if (!this.fogQuiet) this.fogDone?.(reveal, cells, name);
 		this.undo.push({
-			label: label ?? `${reveal ? 'Reveal' : 'Hide'} ${n} hex${n === 1 ? '' : 'es'}`,
+			label: name,
 			touches: new Set([LAYER_FILES.revealed]),
 			run: () => void this.applyRevealed(cells, reveal),
 			undo: () => void this.applyRevealed(cells, !reveal),
@@ -341,10 +363,11 @@ export class MapEditor {
 	/** The cells [origins] can see, by terrain height (decision 5b). Each origin
 	 *  projects sight once (no cascade); clamped to the grid. */
 	sightFrom(origins: Cell[]): Cell[] {
+		const height = this.terrainHeight ?? heightOf;
 		const heightAt = (q: number, r: number) => {
 			const h = this.model.getHex(q, r);
 			// No record: unpainted ground, which is flat.
-			return h ? heightOf(h.terrain) : 0;
+			return h ? height(h.terrain) : 0;
 		};
 		const seen = new Map<string, Cell>();
 		for (const [q, r] of origins) {
